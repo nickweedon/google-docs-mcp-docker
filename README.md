@@ -102,18 +102,52 @@ docker-compose up -d
 
 The MCP server is now running and ready to accept connections.
 
-## Usage with Claude Desktop
+## Claude Desktop Integration
 
-Add the following to your Claude Desktop `mcp_config.json`:
+Add this to your Claude Desktop config file:
 
-**macOS:** `~/Library/Application Support/Claude/mcp_config.json`
-**Windows:** `%APPDATA%\Claude\mcp_config.json`
-**Linux:** `~/.config/Claude/mcp_config.json`
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux:** `~/.config/Claude/claude_desktop_config.json`
+
+### Docker Installation
+
+Run the MCP server in a Docker container. This requires mounting the credentials and token files:
 
 ```json
 {
   "mcpServers": {
-    "google-docs-mcp": {
+    "google-docs": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "C:/docker/google-docs-mcp/credentials.json:/app/credentials.json:ro",
+        "-v",
+        "C:/docker/google-docs-mcp/token.json:/app/token.json:ro",
+        "google-docs-mcp-google-docs-mcp:latest"
+      ]
+    }
+  }
+}
+```
+
+**Volume mappings:**
+- `credentials.json` - Google OAuth client credentials (read-only)
+- `token.json` - OAuth access token (read-only, generated during authentication)
+
+**Note:** Adjust the paths (`C:/docker/...`) to match your local file locations. On Linux/macOS, use Unix-style paths (e.g., `/home/user/docker/google-docs-mcp/...`).
+
+### Using a Running Container
+
+If you prefer to keep the container running in the background with `docker-compose up -d`:
+
+```json
+{
+  "mcpServers": {
+    "google-docs": {
       "command": "docker",
       "args": [
         "exec",
@@ -126,6 +160,8 @@ Add the following to your Claude Desktop `mcp_config.json`:
   }
 }
 ```
+
+**Note:** The container must be running before starting Claude Desktop.
 
 Restart Claude Desktop after updating the configuration.
 
