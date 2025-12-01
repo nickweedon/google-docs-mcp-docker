@@ -5,15 +5,11 @@ services:
       dockerfile: Dockerfile
     container_name: google-docs-mcp-server
 
-    # Mount credentials directory for Google OAuth
+    # Mount credentials for Google OAuth
     volumes:
-      - ./credentials:/app/credentials:ro
-      # Symlink credentials into the app directory
       - ./credentials/credentials.json:/app/credentials.json:ro
       - ./credentials/token.json:/app/token.json:ro
 
-    # For initial authentication, run interactively:
-    # docker-compose run --rm google-docs-mcp
     stdin_open: true
     tty: true
 
@@ -24,11 +20,10 @@ services:
     # Restart policy
     restart: unless-stopped
 
-    # Environment variables (can be extended as needed)
     environment:
       - NODE_ENV=production
 
-  # Service for initial authentication
+  # Service for initial authentication (token.json is writable)
   # Use: docker-compose run --rm auth
   auth:
     build:
@@ -37,15 +32,12 @@ services:
     container_name: google-docs-mcp-auth
 
     volumes:
-      # Mount as read-write for auth to save token.json
-      - ./credentials:/app/credentials
       - ./credentials/credentials.json:/app/credentials.json:ro
       - ./credentials/token.json:/app/token.json
 
     stdin_open: true
     tty: true
 
-    # Override command to run authentication
     command: ["node", "./dist/server.js"]
 
     profiles:

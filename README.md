@@ -68,10 +68,21 @@ docker-compose build
 
 ### Step 4: Authenticate with Google (First-Time Setup)
 
-The first time you run the server, you need to authenticate with Google to generate a token:
+The first time you run the server, you need to authenticate with Google to generate a token. Run the container interactively with your credentials mounted and token.json as a writable volume:
 
 ```bash
-docker-compose run --rm google-docs-mcp
+docker run -it --rm \
+  -v $(pwd)/credentials/credentials.json:/app/credentials.json:ro \
+  -v $(pwd)/credentials/token.json:/app/token.json \
+  google-docs-mcp-google-docs-mcp:latest
+```
+
+**Note:** On Windows, use full paths instead of `$(pwd)`:
+```bash
+docker run -it --rm ^
+  -v C:/path/to/credentials/credentials.json:/app/credentials.json:ro ^
+  -v C:/path/to/credentials/token.json:/app/token.json ^
+  google-docs-mcp-google-docs-mcp:latest
 ```
 
 1. The server will output an authorization URL
@@ -81,17 +92,16 @@ docker-compose run --rm google-docs-mcp
 5. The browser will redirect to `localhost` with an error - this is expected
 6. Copy the `code` parameter from the URL (between `code=` and `&scope=`)
 7. Paste the code into the terminal and press Enter
-8. A `token.json` file will be created
+8. The `token.json` file will be saved to your `credentials/` directory
 
-Copy the token to your credentials directory:
+**Important:** Create an empty token.json file before running if it doesn't exist:
 ```bash
-docker cp google-docs-mcp-server:/app/token.json credentials/token.json
+touch credentials/token.json
 ```
 
-Or if using the auth service:
+Alternatively, use docker-compose with the auth profile:
 ```bash
 docker-compose --profile auth run --rm auth
-# After authentication, the token is saved to ./credentials/token.json
 ```
 
 ### Step 5: Run the Server
