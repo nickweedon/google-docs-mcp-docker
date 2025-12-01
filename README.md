@@ -136,7 +136,7 @@ Run the MCP server in a Docker container. This requires mounting the credentials
         "-v",
         "C:/docker/google-docs-mcp/credentials.json:/app/credentials.json:ro",
         "-v",
-        "C:/docker/google-docs-mcp/token.json:/app/token.json:ro",
+        "C:/docker/google-docs-mcp/token.json:/app/token.json",
         "google-docs-mcp-google-docs-mcp:latest"
       ]
     }
@@ -146,7 +146,7 @@ Run the MCP server in a Docker container. This requires mounting the credentials
 
 **Volume mappings:**
 - `credentials.json` - Google OAuth client credentials (read-only)
-- `token.json` - OAuth access token (read-only, generated during authentication)
+- `token.json` - OAuth access token (read-write, allows token refresh)
 
 **Note:** Adjust the paths (`C:/docker/...`) to match your local file locations. On Linux/macOS, use Unix-style paths (e.g., `/home/user/docker/google-docs-mcp/...`).
 
