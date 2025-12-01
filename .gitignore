@@ -1,0 +1,26 @@
+# Credentials - NEVER commit these files
+credentials/credentials.json
+credentials/token.json
+credentials.json
+token.json
+
+# Environment variables
+.env
+.env.*
+
+# Log files
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp
