@@ -13,9 +13,11 @@ WORKDIR /app
 # Clone the repository
 RUN git clone https://github.com/a-bonus/google-docs-mcp.git .
 
-# Copy our patched auth.ts that uses loopback OAuth flow
-# (The original uses deprecated OOB flow which Google blocked)
+# Copy our patched source files:
+# - auth.ts: Uses loopback OAuth flow instead of deprecated OOB flow
+# - googleDocsApiHelpers.ts: Fixes console.log -> console.error for MCP protocol
 COPY src/auth.ts /app/src/auth.ts
+COPY src/googleDocsApiHelpers.ts /app/src/googleDocsApiHelpers.ts
 
 # Install dependencies
 RUN npm install
