@@ -131,7 +131,8 @@ function waitForAuthCode(port: number): Promise<string> {
       }
     });
 
-    server.listen(port, '127.0.0.1', () => {
+    // Bind to 0.0.0.0 to allow connections from outside Docker container
+    server.listen(port, '0.0.0.0', () => {
       console.error(`Listening for OAuth callback on http://localhost:${port}`);
     });
 
