@@ -137,6 +137,8 @@ Run the MCP server in a Docker container. This requires mounting the credentials
         "run",
         "-i",
         "--rm",
+        "-p",
+        "3000:3000",
         "-v",
         "C:/docker/google-docs-mcp/credentials.json:/app/credentials.json:ro",
         "-v",
@@ -148,7 +150,8 @@ Run the MCP server in a Docker container. This requires mounting the credentials
 }
 ```
 
-**Volume mappings:**
+**Configuration notes:**
+- `-p 3000:3000` - Exposes port 3000 for OAuth token refresh callbacks
 - `credentials.json` - Google OAuth client credentials (read-only)
 - `token.json` - OAuth access token (read-write, allows token refresh)
 
