@@ -68,10 +68,18 @@ docker-compose build
 
 ### Step 4: Authenticate with Google (First-Time Setup)
 
-The first time you run the server, you need to authenticate with Google to generate a token. Run the container interactively with your credentials mounted and token.json as a writable volume:
+The first time you run the server, you need to authenticate with Google to generate a token. The authentication uses a loopback OAuth flow - the container starts a temporary web server on port 3000 to receive the OAuth callback.
+
+**Important:** Create an empty token.json file before running if it doesn't exist:
+```bash
+touch credentials/token.json
+```
+
+Run the container with port 3000 exposed:
 
 ```bash
 docker run -it --rm \
+  -p 3000:3000 \
   -v $(pwd)/credentials/credentials.json:/app/credentials.json:ro \
   -v $(pwd)/credentials/token.json:/app/token.json \
   google-docs-mcp-google-docs-mcp:latest
@@ -80,6 +88,7 @@ docker run -it --rm \
 **Note:** On Windows, use full paths instead of `$(pwd)`:
 ```bash
 docker run -it --rm ^
+  -p 3000:3000 ^
   -v C:/path/to/credentials/credentials.json:/app/credentials.json:ro ^
   -v C:/path/to/credentials/token.json:/app/token.json ^
   google-docs-mcp-google-docs-mcp:latest
@@ -89,19 +98,14 @@ docker run -it --rm ^
 2. Copy the URL and open it in your browser
 3. Log in with your Google account (the one added as a Test User)
 4. Click "Allow" to grant permissions
-5. The browser will redirect to `localhost` with an error - this is expected
-6. Copy the `code` parameter from the URL (between `code=` and `&scope=`)
-7. Paste the code into the terminal and press Enter
-8. The `token.json` file will be saved to your `credentials/` directory
-
-**Important:** Create an empty token.json file before running if it doesn't exist:
-```bash
-touch credentials/token.json
-```
+5. Google will redirect to `http://localhost:3000` - the container captures this automatically
+6. You'll see "Authentication Successful!" in your browser
+7. The `token.json` file will be saved to your `credentials/` directory
+8. Press Ctrl+C to stop the container
 
 Alternatively, use docker-compose with the auth profile:
 ```bash
-docker-compose --profile auth run --rm auth
+docker-compose --profile auth run --rm -p 3000:3000 auth
 ```
 
 ### Step 5: Run the Server
@@ -181,12 +185,16 @@ Restart Claude Desktop after updating the configuration.
 .
 ├── Dockerfile           # Docker image definition
 ├── docker-compose.yml   # Docker Compose configuration
+├── src/
+│   └── auth.ts          # Patched auth module (loopback OAuth flow)
 ├── credentials/         # Your Google OAuth credentials (gitignored)
 │   ├── credentials.json # OAuth client credentials
 │   └── token.json       # OAuth access token (generated after auth)
 ├── .gitignore          # Git ignore rules
 └── README.md           # This file
 ```
+
+**Note:** The `src/auth.ts` file is a patched version of the original that uses the loopback OAuth flow instead of the deprecated OOB flow that Google blocked in 2023.
 
 ## Commands
 
