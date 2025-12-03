@@ -1,26 +1,23 @@
 # Google Docs MCP Server Docker Image
-# This Dockerfile builds the google-docs-mcp server from source
-# with a patched auth.ts that uses loopback OAuth instead of deprecated OOB flow
+# This Dockerfile builds the google-docs-mcp server from local source
+# Source files include patches:
+# - auth.ts: Uses loopback OAuth flow instead of deprecated OOB flow
+# - googleDocsApiHelpers.ts: Uses console.error instead of console.log for MCP protocol compatibility
 
 FROM node:20-alpine
-
-# Install git for cloning the repository
-RUN apk add --no-cache git
 
 # Set working directory
 WORKDIR /app
 
-# Clone the repository
-RUN git clone https://github.com/a-bonus/google-docs-mcp.git .
-
-# Copy our patched source files:
-# - auth.ts: Uses loopback OAuth flow instead of deprecated OOB flow
-# - googleDocsApiHelpers.ts: Fixes console.log -> console.error for MCP protocol
-COPY src/auth.ts /app/src/auth.ts
-COPY src/googleDocsApiHelpers.ts /app/src/googleDocsApiHelpers.ts
+# Copy package files first for better caching
+COPY package.json package-lock.json ./
 
 # Install dependencies
 RUN npm install
+
+# Copy source files and configuration
+COPY src/ ./src/
+COPY tsconfig.json index.js ./
 
 # Build the TypeScript code
 RUN npm run build

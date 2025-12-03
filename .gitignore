@@ -1,15 +1,19 @@
-# Credentials - NEVER commit these files
+# Node dependencies
+node_modules/
+dist/
+
+# Credentials / Tokens - NEVER commit these files
 credentials/credentials.json
 credentials/token.json
 credentials.json
 token.json
 
+# Log files
+*.log
+
 # Environment variables
 .env
 .env.*
-
-# Log files
-*.log
 
 # OS files
 .DS_Store
