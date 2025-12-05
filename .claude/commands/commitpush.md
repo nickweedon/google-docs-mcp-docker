@@ -22,6 +22,6 @@ Create a git commit following the project's commit guidelines and push to the re
    - Includes bullet points for each notable change
    - Does NOT include AI attribution or co-author tags
 6. Push the commit to the remote repository with `git push`
-7. Run a `git status` to confirm that the working directory is clean and report status to the user as well as the general results of the whole operation. Always clearly report the commit message and use the emphasized heading "Commit Message". Below this, have a section titled in the same font "Summary" and use green ticks or red crosses as bullet points for each action. Each bullet point must be on its own separate line.
+7. Run a `git status` to confirm that the working directory is clean and report status to the user as well as the general results of the whole operation. Always clearly report the commit message and use the emphasized heading "Commit Message". Below this, have a section titled in the same font "Summary" and use green ticks or red crosses as bullet points for each action. Ensure each bullet point is on its own line (with line breaks between items, not blank lines).
 
 Execute these steps and handle any errors appropriately.
