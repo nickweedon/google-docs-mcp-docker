@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from googleapiclient.http import MediaInMemoryUpload
+from mcp.types import ImageContent
 
 from google_docs_mcp.auth import get_drive_client
 from google_docs_mcp.types import DocumentInfo, UserError
@@ -452,18 +453,16 @@ def list_folder_contents(
 
 
 def upload_image_to_drive(
-    image_data: str,
+    image: ImageContent,
     name: str,
-    mime_type: str,
     parent_folder_id: str | None = None,
 ) -> str:
     """
-    Upload an image to Google Drive from base64-encoded data.
+    Upload an image to Google Drive from ImageContent.
 
     Args:
-        image_data: Base64-encoded image data
+        image: MCP ImageContent object with base64-encoded data and MIME type
         name: Name for the file in Drive
-        mime_type: MIME type of the image (e.g., 'image/png', 'image/jpeg')
         parent_folder_id: Optional parent folder ID (None for root)
 
     Returns:
@@ -473,11 +472,12 @@ def upload_image_to_drive(
         UserError: For permission or upload errors
     """
     drive = get_drive_client()
+    mime_type = image.mimeType
     _log(f'Uploading image "{name}" (type: {mime_type}) to Drive')
 
     try:
-        # Decode base64 data
-        binary_data = base64.b64decode(image_data)
+        # Decode base64 data from ImageContent
+        binary_data = base64.b64decode(image.data)
 
         # Prepare metadata
         metadata: dict[str, Any] = {"name": name}

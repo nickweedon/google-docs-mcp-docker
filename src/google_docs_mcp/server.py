@@ -12,6 +12,7 @@ import sys
 from typing import Annotated
 
 from fastmcp import FastMCP
+from mcp.types import ImageContent
 
 from google_docs_mcp.types import TextStyleArgs, ParagraphStyleArgs, UserError
 from google_docs_mcp.api import documents, comments, drive
@@ -471,20 +472,19 @@ def list_folder_contents(
 
 @mcp.tool()
 def upload_image_to_drive(
-    image_data: Annotated[str, "Base64-encoded image data"],
+    image: Annotated[ImageContent, "Image content to upload to Google Drive"],
     name: Annotated[str, "Name for the image file in Drive (e.g., 'photo.png')"],
-    mime_type: Annotated[str, "MIME type of the image (e.g., 'image/png', 'image/jpeg', 'image/gif')"],
     parent_folder_id: Annotated[
         str | None, "Parent folder ID. If not provided, uploads to Drive root."
     ] = None,
 ) -> str:
     """
-    Upload an image to Google Drive from base64-encoded data.
+    Upload an image to Google Drive.
 
-    Accepts image data in base64 format and uploads it to Google Drive.
+    Accepts an image as ImageContent (base64-encoded data with MIME type) and uploads it to Google Drive.
     Returns the file ID and web link for the uploaded image.
     """
-    return drive.upload_image_to_drive(image_data, name, mime_type, parent_folder_id)
+    return drive.upload_image_to_drive(image, name, parent_folder_id)
 
 
 @mcp.tool()
