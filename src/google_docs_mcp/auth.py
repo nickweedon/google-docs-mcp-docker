@@ -29,10 +29,19 @@ SCOPES = [
 # OAuth loopback port
 LOOPBACK_PORT = 3000
 
-# Calculate paths relative to project root
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
-TOKEN_PATH = PROJECT_ROOT / "token.json"
-CREDENTIALS_PATH = PROJECT_ROOT / "credentials.json"
+# Calculate paths for credentials
+# In Docker: /workspace/credentials/
+# In local dev: ./credentials/
+if os.getenv("DOCKER_ENV"):
+    # Running in Docker container
+    CREDENTIALS_DIR = Path("/workspace/credentials")
+else:
+    # Local development - find project root
+    PROJECT_ROOT = Path(__file__).parent.parent.parent
+    CREDENTIALS_DIR = PROJECT_ROOT / "credentials"
+
+TOKEN_PATH = CREDENTIALS_DIR / "token.json"
+CREDENTIALS_PATH = CREDENTIALS_DIR / "credentials.json"
 
 
 def _log(message: str) -> None:

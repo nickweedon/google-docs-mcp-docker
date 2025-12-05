@@ -10,8 +10,7 @@ services:
 
     # Mount credentials for Google OAuth
     volumes:
-      - ./credentials/credentials.json:/workspace/credentials.json:ro
-      - ./credentials/token.json:/workspace/token.json
+      - ./credentials:/workspace/credentials
 
     stdin_open: true
     tty: true

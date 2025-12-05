@@ -80,18 +80,16 @@ Run the container with port 3000 exposed:
 ```bash
 docker run -it --rm \
   -p 3000:3000 \
-  -v $(pwd)/credentials/credentials.json:/workspace/credentials.json:ro \
-  -v $(pwd)/credentials/token.json:/workspace/token.json \
-  google-docs-mcp-google-docs-mcp:latest
+  -v $(pwd)/credentials:/workspace/credentials \
+  workspace-google-docs-mcp:latest
 ```
 
 **Note:** On Windows, use full paths instead of `$(pwd)`:
 ```bash
 docker run -it --rm ^
   -p 3000:3000 ^
-  -v C:/path/to/credentials/credentials.json:/workspace/credentials.json:ro ^
-  -v C:/path/to/credentials/token.json:/workspace/token.json ^
-  google-docs-mcp-google-docs-mcp:latest
+  -v C:/path/to/google-docs-mcp/credentials:/workspace/credentials ^
+  workspace-google-docs-mcp:latest
 ```
 
 1. The server will output an authorization URL
@@ -140,10 +138,8 @@ Run the MCP server in a Docker container. This requires mounting the credentials
         "-p",
         "3000:3000",
         "-v",
-        "C:/docker/google-docs-mcp/credentials.json:/workspace/credentials.json:ro",
-        "-v",
-        "C:/docker/google-docs-mcp/token.json:/workspace/token.json",
-        "google-docs-mcp-google-docs-mcp:latest"
+        "C:/path/to/google-docs-mcp/credentials:/workspace/credentials",
+        "workspace-google-docs-mcp:latest"
       ]
     }
   }
@@ -152,10 +148,9 @@ Run the MCP server in a Docker container. This requires mounting the credentials
 
 **Configuration notes:**
 - `-p 3000:3000` - Exposes port 3000 for OAuth token refresh callbacks
-- `credentials.json` - Google OAuth client credentials (read-only)
-- `token.json` - OAuth access token (read-write, allows token refresh)
+- The `-v` mount maps your local `credentials/` directory (containing both `credentials.json` and `token.json`) to `/workspace/credentials/` in the container
 
-**Note:** Adjust the paths (`C:/docker/...`) to match your local file locations. On Linux/macOS, use Unix-style paths (e.g., `/home/user/docker/google-docs-mcp/...`).
+**Note:** Adjust the path (`C:/path/to/google-docs-mcp/credentials`) to match your local credentials directory. On Linux/macOS, use Unix-style paths (e.g., `/home/user/google-docs-mcp/credentials`).
 
 ### Using a Running Container
 
