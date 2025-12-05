@@ -189,6 +189,16 @@ def read_google_doc(
 - Uses `google-auth` and `google-auth-oauthlib` for authentication
 - Requires Python 3.10+
 
+### FastMCP Documentation
+
+For detailed FastMCP implementation guidance, see:
+- [docs/FASTMCP_REFERENCE.md](docs/FASTMCP_REFERENCE.md) - Server implementation (tools, resources, prompts, context, middleware, authentication, deployment)
+- [docs/FASTMCP_SDK_REFERENCE.md](docs/FASTMCP_SDK_REFERENCE.md) - Python SDK reference (exceptions, settings, CLI, client, server modules, utilities)
+
+For additional information beyond what's covered in this project's documentation, refer to:
+- Official FastMCP documentation: https://gofastmcp.com
+- FastMCP GitHub repository: https://github.com/jlowin/fastmcp
+
 ## Building and Running
 
 ### VS Code Devcontainer (Recommended for Development)
