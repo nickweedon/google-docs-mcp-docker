@@ -6,6 +6,7 @@ services:
       args:
         INSTALL_MCP: true
         CREATE_VSCODE_USER: false
+    image: google-docs-mcp:latest
     container_name: google-docs-mcp-server
 
     # Mount credentials for Google OAuth
@@ -28,29 +29,3 @@ services:
     # Override default sleep command to run the MCP server
     command: ["uv", "run", "google-docs-mcp"]
 
-  # Service for initial authentication (token.json is writable)
-  # Use: docker-compose run --rm auth
-  auth:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        INSTALL_MCP: true
-        CREATE_VSCODE_USER: false
-    container_name: google-docs-mcp-auth
-
-    volumes:
-      - ./credentials/credentials.json:/workspace/credentials.json:ro
-      - ./credentials/token.json:/workspace/token.json
-
-    stdin_open: true
-    tty: true
-
-    # Expose port for OAuth callback
-    ports:
-      - "3000:3000"
-
-    command: ["uv", "run", "google-docs-mcp"]
-
-    profiles:
-      - auth
