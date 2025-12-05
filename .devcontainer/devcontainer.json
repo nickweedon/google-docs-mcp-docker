@@ -1,0 +1,43 @@
+{
+  "name": "Google Docs MCP Development Container",
+
+  // Use docker-compose for DevContainer
+  "dockerComposeFile": "../docker-compose.devcontainer.yml",
+  "service": "google-docs-mcp-vscode",
+
+  // Set the default user for VS Code
+  "remoteUser": "vscode",
+
+  // Working directory inside the container
+  "workspaceFolder": "/workspace",
+
+  // Forward ports (OAuth loopback callback)
+  "forwardPorts": [3000],
+
+  // Install VS Code extensions automatically in the container
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy",
+        "charliermarsh.ruff",
+        "anthropic.claude-code"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/home/vscode/.local/bin/uv",
+        "python.terminal.activateEnvironment": true,
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+
+  // Run commands after container creation
+  "postCreateCommand": "cd /workspace && uv sync",
+
+  // Fix docker group GID to match host's docker socket and sync dependencies
+  "postStartCommand": "sudo chgrp docker /var/run/docker.sock 2>/dev/null || true",
+
+  // Features to add
+  "features": {}
+}

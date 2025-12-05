@@ -1,0 +1,815 @@
+"""
+Helper functions for Google Docs API operations.
+
+Ported from googleDocsApiHelpers.ts
+"""
+
+import sys
+from typing import Any
+
+from google_docs_mcp.types import (
+    TextStyleArgs,
+    ParagraphStyleArgs,
+    TextRange,
+    TabInfo,
+    hex_to_rgb_color,
+    UserError,
+    NotImplementedError,
+)
+
+
+def _log(message: str) -> None:
+    """Log a message to stderr (MCP protocol compatibility)."""
+    print(message, file=sys.stderr)
+
+
+# --- Constants ---
+MAX_BATCH_UPDATE_REQUESTS = 50
+
+
+# --- Core Helper to Execute Batch Updates ---
+async def execute_batch_update(
+    docs, document_id: str, requests: list[dict]
+) -> dict | None:
+    """
+    Execute a batch update request on a Google Document.
+
+    Args:
+        docs: Google Docs API client
+        document_id: The document ID
+        requests: List of update requests
+
+    Returns:
+        Batch update response data
+
+    Raises:
+        UserError: For client-facing errors
+        Exception: For internal errors
+    """
+    if not requests:
+        return {}
+
+    if len(requests) > MAX_BATCH_UPDATE_REQUESTS:
+        _log(
+            f"Attempting batch update with {len(requests)} requests, "
+            f"exceeding typical limits. May fail."
+        )
+
+    try:
+        response = (
+            docs.documents()
+            .batchUpdate(documentId=document_id, body={"requests": requests})
+            .execute()
+        )
+        return response
+    except Exception as e:
+        error_message = str(e)
+        _log(f"Google API batchUpdate Error for doc {document_id}: {error_message}")
+
+        # Handle common API errors
+        if "404" in error_message:
+            raise UserError(f"Document not found (ID: {document_id}). Check the ID.")
+        if "403" in error_message:
+            raise UserError(
+                f"Permission denied for document (ID: {document_id}). "
+                f"Ensure the authenticated user has edit access."
+            )
+        if "400" in error_message:
+            raise UserError(f"Invalid request sent to Google Docs API: {error_message}")
+
+        raise Exception(f"Google API Error: {error_message}")
+
+
+def execute_batch_update_sync(docs, document_id: str, requests: list[dict]) -> dict | None:
+    """
+    Execute a batch update request on a Google Document (synchronous version).
+
+    Args:
+        docs: Google Docs API client
+        document_id: The document ID
+        requests: List of update requests
+
+    Returns:
+        Batch update response data
+
+    Raises:
+        UserError: For client-facing errors
+        Exception: For internal errors
+    """
+    if not requests:
+        return {}
+
+    if len(requests) > MAX_BATCH_UPDATE_REQUESTS:
+        _log(
+            f"Attempting batch update with {len(requests)} requests, "
+            f"exceeding typical limits. May fail."
+        )
+
+    try:
+        response = (
+            docs.documents()
+            .batchUpdate(documentId=document_id, body={"requests": requests})
+            .execute()
+        )
+        return response
+    except Exception as e:
+        error_message = str(e)
+        _log(f"Google API batchUpdate Error for doc {document_id}: {error_message}")
+
+        # Handle common API errors
+        if "404" in error_message:
+            raise UserError(f"Document not found (ID: {document_id}). Check the ID.")
+        if "403" in error_message:
+            raise UserError(
+                f"Permission denied for document (ID: {document_id}). "
+                f"Ensure the authenticated user has edit access."
+            )
+        if "400" in error_message:
+            raise UserError(f"Invalid request sent to Google Docs API: {error_message}")
+
+        raise Exception(f"Google API Error: {error_message}")
+
+
+# --- Text Finding Helper ---
+def find_text_range(
+    docs, document_id: str, text_to_find: str, instance: int = 1
+) -> TextRange | None:
+    """
+    Find a specific instance of text within a document.
+
+    Args:
+        docs: Google Docs API client
+        document_id: The document ID
+        text_to_find: The text string to locate
+        instance: Which instance to find (1-based)
+
+    Returns:
+        TextRange with start and end indices, or None if not found
+
+    Raises:
+        UserError: For permission/not found errors
+    """
+    try:
+        # Request detailed document structure
+        res = (
+            docs.documents()
+            .get(
+                documentId=document_id,
+                fields="body(content(paragraph(elements(startIndex,endIndex,textRun(content))),table,sectionBreak,tableOfContents,startIndex,endIndex))",
+            )
+            .execute()
+        )
+
+        body = res.get("body", {})
+        content = body.get("content", [])
+
+        if not content:
+            _log(f"No content found in document {document_id}")
+            return None
+
+        # Collect text segments with their indices
+        full_text = ""
+        segments: list[dict] = []
+
+        def collect_text_from_content(content_list: list) -> None:
+            nonlocal full_text
+
+            for element in content_list:
+                # Handle paragraph elements
+                paragraph = element.get("paragraph", {})
+                if paragraph.get("elements"):
+                    for pe in paragraph["elements"]:
+                        text_run = pe.get("textRun", {})
+                        if (
+                            text_run.get("content")
+                            and pe.get("startIndex") is not None
+                            and pe.get("endIndex") is not None
+                        ):
+                            text_content = text_run["content"]
+                            full_text += text_content
+                            segments.append(
+                                {
+                                    "text": text_content,
+                                    "start": pe["startIndex"],
+                                    "end": pe["endIndex"],
+                                }
+                            )
+
+                # Handle table elements
+                table = element.get("table", {})
+                if table.get("tableRows"):
+                    for row in table["tableRows"]:
+                        for cell in row.get("tableCells", []):
+                            if cell.get("content"):
+                                collect_text_from_content(cell["content"])
+
+        collect_text_from_content(content)
+
+        # Sort segments by starting position
+        segments.sort(key=lambda x: x["start"])
+
+        _log(
+            f"Document {document_id} contains {len(segments)} text segments "
+            f"and {len(full_text)} characters in total."
+        )
+
+        # Find the specified instance of the text
+        start_index = -1
+        end_index = -1
+        found_count = 0
+        search_start_index = 0
+
+        while found_count < instance:
+            current_index = full_text.find(text_to_find, search_start_index)
+            if current_index == -1:
+                _log(
+                    f'Search text "{text_to_find}" not found for instance '
+                    f"{found_count + 1} (requested: {instance})"
+                )
+                break
+
+            found_count += 1
+            _log(
+                f'Found instance {found_count} of "{text_to_find}" '
+                f"at position {current_index} in full text"
+            )
+
+            if found_count == instance:
+                target_start = current_index
+                target_end = current_index + len(text_to_find)
+                current_pos = 0
+
+                _log(f"Target text range in full text: {target_start}-{target_end}")
+
+                for seg in segments:
+                    seg_start = current_pos
+                    seg_length = len(seg["text"])
+                    seg_end = seg_start + seg_length
+
+                    # Map from reconstructed text position to actual document indices
+                    if (
+                        start_index == -1
+                        and target_start >= seg_start
+                        and target_start < seg_end
+                    ):
+                        start_index = seg["start"] + (target_start - seg_start)
+                        _log(
+                            f"Mapped start to segment {seg['start']}-{seg['end']}, "
+                            f"position {start_index}"
+                        )
+
+                    if target_end > seg_start and target_end <= seg_end:
+                        end_index = seg["start"] + (target_end - seg_start)
+                        _log(
+                            f"Mapped end to segment {seg['start']}-{seg['end']}, "
+                            f"position {end_index}"
+                        )
+                        break
+
+                    current_pos = seg_end
+
+                if start_index == -1 or end_index == -1:
+                    _log(
+                        f'Failed to map text "{text_to_find}" instance {instance} '
+                        f"to actual document indices"
+                    )
+                    start_index = -1
+                    end_index = -1
+                    search_start_index = current_index + 1
+                    found_count -= 1
+                    continue
+
+                _log(
+                    f'Successfully mapped "{text_to_find}" to document range '
+                    f"{start_index}-{end_index}"
+                )
+                return TextRange(start_index=start_index, end_index=end_index)
+
+            # Prepare for next search iteration
+            search_start_index = current_index + 1
+
+        _log(
+            f'Could not find instance {instance} of text "{text_to_find}" '
+            f"in document {document_id}"
+        )
+        return None
+
+    except Exception as e:
+        error_message = str(e)
+        _log(
+            f'Error finding text "{text_to_find}" in doc {document_id}: {error_message}'
+        )
+        if "404" in error_message:
+            raise UserError(
+                f"Document not found while searching text (ID: {document_id})."
+            )
+        if "403" in error_message:
+            raise UserError(
+                f"Permission denied while searching text in doc {document_id}."
+            )
+        raise Exception(f"Failed to retrieve doc for text searching: {error_message}")
+
+
+# --- Paragraph Boundary Helper ---
+def get_paragraph_range(
+    docs, document_id: str, index_within: int
+) -> TextRange | None:
+    """
+    Find the paragraph boundaries containing a specific index.
+
+    Args:
+        docs: Google Docs API client
+        document_id: The document ID
+        index_within: An index within the target paragraph
+
+    Returns:
+        TextRange with paragraph start and end indices, or None if not found
+
+    Raises:
+        UserError: For permission/not found errors
+    """
+    try:
+        _log(f"Finding paragraph containing index {index_within} in document {document_id}")
+
+        res = (
+            docs.documents()
+            .get(
+                documentId=document_id,
+                fields="body(content(startIndex,endIndex,paragraph,table,sectionBreak,tableOfContents))",
+            )
+            .execute()
+        )
+
+        body = res.get("body", {})
+        content = body.get("content", [])
+
+        if not content:
+            _log(f"No content found in document {document_id}")
+            return None
+
+        def find_paragraph_in_content(
+            content_list: list,
+        ) -> TextRange | None:
+            for element in content_list:
+                start_idx = element.get("startIndex")
+                end_idx = element.get("endIndex")
+
+                if start_idx is not None and end_idx is not None:
+                    if index_within >= start_idx and index_within < end_idx:
+                        # If it's a paragraph, we've found our target
+                        if element.get("paragraph"):
+                            _log(
+                                f"Found paragraph containing index {index_within}, "
+                                f"range: {start_idx}-{end_idx}"
+                            )
+                            return TextRange(start_index=start_idx, end_index=end_idx)
+
+                        # If it's a table, search cells recursively
+                        table = element.get("table", {})
+                        if table.get("tableRows"):
+                            _log(
+                                f"Index {index_within} is within a table, searching cells..."
+                            )
+                            for row in table["tableRows"]:
+                                for cell in row.get("tableCells", []):
+                                    if cell.get("content"):
+                                        result = find_paragraph_in_content(
+                                            cell["content"]
+                                        )
+                                        if result:
+                                            return result
+
+                        _log(
+                            f"Index {index_within} is within element "
+                            f"({start_idx}-{end_idx}) but not in a paragraph"
+                        )
+
+            return None
+
+        result = find_paragraph_in_content(content)
+
+        if not result:
+            _log(f"Could not find paragraph containing index {index_within}")
+        else:
+            _log(
+                f"Returning paragraph range: {result.start_index}-{result.end_index}"
+            )
+
+        return result
+
+    except Exception as e:
+        error_message = str(e)
+        _log(
+            f"Error getting paragraph range for index {index_within} "
+            f"in doc {document_id}: {error_message}"
+        )
+        if "404" in error_message:
+            raise UserError(
+                f"Document not found while finding paragraph (ID: {document_id})."
+            )
+        if "403" in error_message:
+            raise UserError(
+                f"Permission denied while accessing doc {document_id}."
+            )
+        raise Exception(f"Failed to find paragraph: {error_message}")
+
+
+# --- Style Request Builders ---
+def build_update_text_style_request(
+    start_index: int, end_index: int, style: TextStyleArgs
+) -> dict | None:
+    """
+    Build an updateTextStyle request for the Google Docs API.
+
+    Args:
+        start_index: Starting index of text range
+        end_index: Ending index of text range
+        style: Text style arguments to apply
+
+    Returns:
+        Dictionary with 'request' and 'fields' keys, or None if no styles
+
+    Raises:
+        UserError: If color format is invalid
+    """
+    text_style: dict[str, Any] = {}
+    fields_to_update: list[str] = []
+
+    if style.bold is not None:
+        text_style["bold"] = style.bold
+        fields_to_update.append("bold")
+
+    if style.italic is not None:
+        text_style["italic"] = style.italic
+        fields_to_update.append("italic")
+
+    if style.underline is not None:
+        text_style["underline"] = style.underline
+        fields_to_update.append("underline")
+
+    if style.strikethrough is not None:
+        text_style["strikethrough"] = style.strikethrough
+        fields_to_update.append("strikethrough")
+
+    if style.font_size is not None:
+        text_style["fontSize"] = {"magnitude": style.font_size, "unit": "PT"}
+        fields_to_update.append("fontSize")
+
+    if style.font_family is not None:
+        text_style["weightedFontFamily"] = {"fontFamily": style.font_family}
+        fields_to_update.append("weightedFontFamily")
+
+    if style.foreground_color is not None:
+        rgb_color = hex_to_rgb_color(style.foreground_color)
+        if not rgb_color:
+            raise UserError(
+                f"Invalid foreground hex color format: {style.foreground_color}"
+            )
+        text_style["foregroundColor"] = {"color": {"rgbColor": rgb_color}}
+        fields_to_update.append("foregroundColor")
+
+    if style.background_color is not None:
+        rgb_color = hex_to_rgb_color(style.background_color)
+        if not rgb_color:
+            raise UserError(
+                f"Invalid background hex color format: {style.background_color}"
+            )
+        text_style["backgroundColor"] = {"color": {"rgbColor": rgb_color}}
+        fields_to_update.append("backgroundColor")
+
+    if style.link_url is not None:
+        text_style["link"] = {"url": style.link_url}
+        fields_to_update.append("link")
+
+    if not fields_to_update:
+        return None
+
+    request = {
+        "updateTextStyle": {
+            "range": {"startIndex": start_index, "endIndex": end_index},
+            "textStyle": text_style,
+            "fields": ",".join(fields_to_update),
+        }
+    }
+
+    return {"request": request, "fields": fields_to_update}
+
+
+def build_update_paragraph_style_request(
+    start_index: int, end_index: int, style: ParagraphStyleArgs
+) -> dict | None:
+    """
+    Build an updateParagraphStyle request for the Google Docs API.
+
+    Args:
+        start_index: Starting index of paragraph range
+        end_index: Ending index of paragraph range
+        style: Paragraph style arguments to apply
+
+    Returns:
+        Dictionary with 'request' and 'fields' keys, or None if no styles
+    """
+    paragraph_style: dict[str, Any] = {}
+    fields_to_update: list[str] = []
+
+    _log(
+        f"Building paragraph style request for range {start_index}-{end_index} "
+        f"with options: {style}"
+    )
+
+    if style.alignment is not None:
+        paragraph_style["alignment"] = style.alignment
+        fields_to_update.append("alignment")
+        _log(f"Setting alignment to {style.alignment}")
+
+    if style.indent_start is not None:
+        paragraph_style["indentStart"] = {
+            "magnitude": style.indent_start,
+            "unit": "PT",
+        }
+        fields_to_update.append("indentStart")
+        _log(f"Setting left indent to {style.indent_start}pt")
+
+    if style.indent_end is not None:
+        paragraph_style["indentEnd"] = {"magnitude": style.indent_end, "unit": "PT"}
+        fields_to_update.append("indentEnd")
+        _log(f"Setting right indent to {style.indent_end}pt")
+
+    if style.space_above is not None:
+        paragraph_style["spaceAbove"] = {"magnitude": style.space_above, "unit": "PT"}
+        fields_to_update.append("spaceAbove")
+        _log(f"Setting space above to {style.space_above}pt")
+
+    if style.space_below is not None:
+        paragraph_style["spaceBelow"] = {"magnitude": style.space_below, "unit": "PT"}
+        fields_to_update.append("spaceBelow")
+        _log(f"Setting space below to {style.space_below}pt")
+
+    if style.named_style_type is not None:
+        paragraph_style["namedStyleType"] = style.named_style_type
+        fields_to_update.append("namedStyleType")
+        _log(f"Setting named style to {style.named_style_type}")
+
+    if style.keep_with_next is not None:
+        paragraph_style["keepWithNext"] = style.keep_with_next
+        fields_to_update.append("keepWithNext")
+        _log(f"Setting keepWithNext to {style.keep_with_next}")
+
+    if not fields_to_update:
+        _log("No paragraph styling options were provided")
+        return None
+
+    request = {
+        "updateParagraphStyle": {
+            "range": {"startIndex": start_index, "endIndex": end_index},
+            "paragraphStyle": paragraph_style,
+            "fields": ",".join(fields_to_update),
+        }
+    }
+
+    _log(f"Created paragraph style request with fields: {', '.join(fields_to_update)}")
+    return {"request": request, "fields": fields_to_update}
+
+
+# --- Specific Feature Helpers ---
+def create_table(
+    docs, document_id: str, rows: int, columns: int, index: int
+) -> dict | None:
+    """
+    Insert a new table into a document.
+
+    Args:
+        docs: Google Docs API client
+        document_id: The document ID
+        rows: Number of rows
+        columns: Number of columns
+        index: Position to insert the table
+
+    Returns:
+        Batch update response
+
+    Raises:
+        UserError: If table dimensions are invalid
+    """
+    if rows < 1 or columns < 1:
+        raise UserError("Table must have at least 1 row and 1 column.")
+
+    request = {
+        "insertTable": {
+            "location": {"index": index},
+            "rows": rows,
+            "columns": columns,
+        }
+    }
+
+    return execute_batch_update_sync(docs, document_id, [request])
+
+
+def insert_text(docs, document_id: str, text: str, index: int) -> dict | None:
+    """
+    Insert text at a specific position in a document.
+
+    Args:
+        docs: Google Docs API client
+        document_id: The document ID
+        text: Text to insert
+        index: Position to insert text
+
+    Returns:
+        Batch update response
+    """
+    if not text:
+        return {}
+
+    request = {"insertText": {"location": {"index": index}, "text": text}}
+
+    return execute_batch_update_sync(docs, document_id, [request])
+
+
+def insert_inline_image(
+    docs,
+    document_id: str,
+    image_url: str,
+    index: int,
+    width: float | None = None,
+    height: float | None = None,
+) -> dict | None:
+    """
+    Insert an inline image from a URL.
+
+    Args:
+        docs: Google Docs API client
+        document_id: The document ID
+        image_url: Publicly accessible URL to the image
+        index: Position to insert the image
+        width: Optional width in points
+        height: Optional height in points
+
+    Returns:
+        Batch update response
+
+    Raises:
+        UserError: If URL format is invalid
+    """
+    from urllib.parse import urlparse
+
+    try:
+        result = urlparse(image_url)
+        if not all([result.scheme, result.netloc]):
+            raise ValueError("Invalid URL")
+    except Exception:
+        raise UserError(f"Invalid image URL format: {image_url}")
+
+    request: dict[str, Any] = {
+        "insertInlineImage": {"location": {"index": index}, "uri": image_url}
+    }
+
+    if width and height:
+        request["insertInlineImage"]["objectSize"] = {
+            "height": {"magnitude": height, "unit": "PT"},
+            "width": {"magnitude": width, "unit": "PT"},
+        }
+
+    return execute_batch_update_sync(docs, document_id, [request])
+
+
+# --- Tab Management Helpers ---
+def get_all_tabs(doc: dict) -> list[TabInfo]:
+    """
+    Get all tabs from a document in a flat list with hierarchy info.
+
+    Args:
+        doc: Google Document response object
+
+    Returns:
+        List of TabInfo objects with nesting level information
+    """
+    all_tabs: list[TabInfo] = []
+    tabs = doc.get("tabs", [])
+
+    if not tabs:
+        return all_tabs
+
+    def add_tab_and_children(tab: dict, level: int) -> None:
+        props = tab.get("tabProperties", {})
+        doc_tab = tab.get("documentTab")
+
+        text_length = None
+        if doc_tab:
+            text_length = get_tab_text_length(doc_tab)
+
+        tab_info = TabInfo(
+            tab_id=props.get("tabId", ""),
+            title=props.get("title", "Untitled"),
+            index=props.get("index"),
+            parent_tab_id=props.get("parentTabId"),
+            level=level,
+            text_length=text_length,
+        )
+        all_tabs.append(tab_info)
+
+        for child_tab in tab.get("childTabs", []):
+            add_tab_and_children(child_tab, level + 1)
+
+    for tab in tabs:
+        add_tab_and_children(tab, 0)
+
+    return all_tabs
+
+
+def get_tab_text_length(document_tab: dict) -> int:
+    """
+    Get the text length from a DocumentTab.
+
+    Args:
+        document_tab: The DocumentTab object
+
+    Returns:
+        Total character count
+    """
+    total_length = 0
+    body = document_tab.get("body", {})
+    content = body.get("content", [])
+
+    for element in content:
+        # Handle paragraphs
+        paragraph = element.get("paragraph", {})
+        if paragraph.get("elements"):
+            for pe in paragraph["elements"]:
+                text_run = pe.get("textRun", {})
+                if text_run.get("content"):
+                    total_length += len(text_run["content"])
+
+        # Handle tables
+        table = element.get("table", {})
+        if table.get("tableRows"):
+            for row in table["tableRows"]:
+                for cell in row.get("tableCells", []):
+                    for cell_element in cell.get("content", []):
+                        cell_paragraph = cell_element.get("paragraph", {})
+                        for pe in cell_paragraph.get("elements", []):
+                            text_run = pe.get("textRun", {})
+                            if text_run.get("content"):
+                                total_length += len(text_run["content"])
+
+    return total_length
+
+
+def find_tab_by_id(doc: dict, tab_id: str) -> dict | None:
+    """
+    Find a specific tab by ID in a document.
+
+    Args:
+        doc: Google Document response object
+        tab_id: The tab ID to search for
+
+    Returns:
+        The tab object if found, None otherwise
+    """
+    tabs = doc.get("tabs", [])
+    if not tabs:
+        return None
+
+    def search_tabs(tabs_list: list) -> dict | None:
+        for tab in tabs_list:
+            props = tab.get("tabProperties", {})
+            if props.get("tabId") == tab_id:
+                return tab
+            # Recursively search child tabs
+            child_tabs = tab.get("childTabs", [])
+            if child_tabs:
+                found = search_tabs(child_tabs)
+                if found:
+                    return found
+        return None
+
+    return search_tabs(tabs)
+
+
+# --- Not Implemented Helpers ---
+def detect_and_format_lists(
+    docs, document_id: str, start_index: int | None = None, end_index: int | None = None
+) -> dict:
+    """
+    Detect and format lists in a document.
+
+    NOT IMPLEMENTED.
+    """
+    _log("detect_and_format_lists is not implemented.")
+    raise NotImplementedError(
+        "Automatic list detection and formatting is not yet implemented."
+    )
+
+
+def find_paragraphs_matching_style(
+    docs, document_id: str, style_criteria: dict
+) -> list[TextRange]:
+    """
+    Find paragraphs matching style criteria.
+
+    NOT IMPLEMENTED.
+    """
+    _log("find_paragraphs_matching_style is not implemented.")
+    raise NotImplementedError(
+        "Finding paragraphs by style criteria is not yet implemented."
+    )

@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  google-docs-mcp-vscode:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_MCP: false
+        CREATE_VSCODE_USER: true
+    image: google-docs-mcp-vscode:latest
+    container_name: google-docs-mcp-devcontainer
+    environment:
+      - HOST_USER=${USER}
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    # Run as vscode user for devcontainer
+    user: vscode
+    # Mount local workspace for live development
+    volumes:
+      - .:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /mnt/c/Users/${USER}/AppData/Roaming/Claude/logs:/workspace/claude-desktop-logs:ro
+    # Expose port for OAuth loopback callback
+    ports:
+      - "3000:3000"

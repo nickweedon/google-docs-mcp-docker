@@ -13,58 +13,61 @@ You should consult these logs whenever a prompt refers to recent errors in Claud
 
 ## Project Structure
 
-This is a TypeScript project using the FastMCP framework.
+Follow standard Python project conventions with a modular architecture. API methods should be organized into separate modules by domain.
 
 ```
 google-docs-mcp/
 ├── src/
-│   ├── server.ts              # Main MCP server with all tool definitions
-│   ├── auth.ts                # OAuth2 authentication (loopback flow)
-│   ├── googleDocsApiHelpers.ts # Helper functions for Google Docs API
-│   └── types.ts               # Zod schemas and TypeScript types
+│   └── google_docs_mcp/
+│       ├── __init__.py         # Package initialization
+│       ├── server.py           # Main MCP server entry point
+│       ├── auth.py             # OAuth2 authentication (loopback flow)
+│       ├── types.py            # Type definitions and utilities
+│       ├── api/
+│       │   ├── __init__.py     # API module initialization
+│       │   ├── documents.py    # Document reading/writing operations
+│       │   ├── comments.py     # Comment management operations
+│       │   ├── drive.py        # Google Drive operations
+│       │   └── helpers.py      # Google Docs API helper functions
+│       └── utils/
+│           └── __init__.py     # Utility functions
 ├── tests/
-│   ├── helpers.test.js        # Tests for helper functions
-│   └── types.test.js          # Tests for type utilities
-├── credentials/               # OAuth credentials directory (mounted volume)
-│   ├── credentials.json       # Google OAuth client credentials
-│   └── token.json            # Stored OAuth tokens
-├── dist/                      # Compiled JavaScript output
-├── package.json               # Node.js dependencies
-├── tsconfig.json              # TypeScript configuration
-├── index.js                   # Entry point
-├── Dockerfile                 # Docker build configuration
-├── docker-compose.yml         # Docker Compose configuration
-├── README.md                  # User documentation
-└── CLAUDE.md                  # This file - context for Claude
+│   ├── __init__.py
+│   ├── conftest.py             # Pytest fixtures
+│   ├── test_types.py           # Tests for type utilities
+│   └── test_helpers.py         # Tests for helper functions
+├── credentials/                # OAuth credentials directory (mounted volume)
+│   ├── credentials.json        # Google OAuth client credentials
+│   └── token.json              # Stored OAuth tokens
+├── pyproject.toml              # Project configuration and dependencies
+├── Dockerfile                  # Docker build configuration (dev + production)
+├── docker-compose.yml          # Docker Compose for production
+├── docker-compose.devcontainer.yml  # Docker Compose for VS Code devcontainer
+├── .devcontainer/
+│   └── devcontainer.json       # VS Code devcontainer configuration
+├── README.md                   # User documentation
+└── CLAUDE.md                   # This file - context for Claude
 ```
 
 ## Code Organization Guidelines
 
-1. **Single Server File**: All MCP tools are defined in `server.ts`. This includes:
-   - Document reading and writing
-   - Text formatting and styling
-   - Table operations
-   - Image insertion
-   - Comment management
-   - Drive file listing and search
+1. **Modular API Methods**: Each API domain (Documents, Comments, Drive) MUST be implemented in its own Python module under `src/google_docs_mcp/api/`.
 
-2. **Helper Functions**: Complex Google Docs API operations are implemented in `googleDocsApiHelpers.ts`:
-   - `executeBatchUpdate` - Executes batch API requests
-   - `findTextRange` - Locates text in documents
-   - `getParagraphRange` - Finds paragraph boundaries
-   - `buildUpdateTextStyleRequest` - Builds text styling requests
-   - `buildUpdateParagraphStyleRequest` - Builds paragraph styling requests
-   - Tab management helpers
+2. **Separation of Concerns**:
+   - `auth.py` - OAuth2 client, authentication, and token management
+   - `api/*.py` - Domain-specific API methods only
+   - `api/helpers.py` - Shared Google Docs API helper functions
+   - `utils/` - Shared helper functions and utilities
+   - `server.py` - MCP server setup and tool registration
 
-3. **Type Definitions**: All Zod schemas and types are in `types.ts`:
-   - Parameter schemas for tools
-   - Style argument types
-   - Custom error classes
+3. **Standard Python Conventions**:
+   - Use `src/` layout for proper package isolation
+   - Include `__init__.py` files in all packages
+   - Follow PEP 8 naming conventions
+   - Use type hints throughout
+   - Keep modules focused and cohesive
 
-4. **Authentication**: The `auth.ts` module handles OAuth2:
-   - Loopback OAuth flow (not deprecated OOB)
-   - Service account authentication support
-   - Token persistence and refresh
+4. **Import Structure**: Each API module should import the shared client and helpers. The main server imports and registers tools from each API module.
 
 ## Key Implementation Details
 
@@ -81,7 +84,7 @@ google-docs-mcp/
 
 ### MCP Protocol Compatibility
 
-**CRITICAL**: All logging must use `console.error`, never `console.log`. The MCP protocol uses stdout for JSON-RPC communication. Any `console.log` output will corrupt the protocol and cause connection failures.
+**CRITICAL**: All logging must use `stderr` (via `print(..., file=sys.stderr)` or a `_log()` helper), never `stdout` or `print()`. The MCP protocol uses stdout for JSON-RPC communication. Any stdout output will corrupt the protocol and cause connection failures.
 
 ### Document Indexing
 
@@ -93,67 +96,133 @@ Google Docs uses 1-based indexing:
 ### Tab Support
 
 Documents can have multiple tabs:
-- Use `listDocumentTabs` to discover tabs
-- Pass `tabId` parameter to target specific tabs
-- Omit `tabId` to use first/default tab
+- Use `list_document_tabs` to discover tabs
+- Pass `tab_id` parameter to target specific tabs
+- Omit `tab_id` to use first/default tab
+
+## MCP Server Implementation Guidelines
+
+### Tool Method Signatures
+
+The following guidelines should be followed when modifying or creating new MCP tool methods/functions:
+
+1. **Never use print() or stdout** - All logging must go to stderr to avoid corrupting the MCP JSON-RPC protocol
+
+2. **Use descriptive parameter annotations** - Every parameter should have an `Annotated` type with a clear description
+
+3. **Provide comprehensive docstrings** - Include description, parameters, returns, and raises sections
+
+4. **Return user-friendly strings** - Tool results should be formatted for human readability with markdown
+
+5. **Handle errors gracefully** - Catch exceptions and convert to UserError with helpful messages
+
+6. **Modular API methods** - Delegate actual API work to domain-specific modules under `api/`
+
+### Example Tool Pattern
+
+```python
+@mcp.tool()
+def read_google_doc(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    format: Annotated[str, "Output format: 'text', 'json', 'markdown'"] = "text",
+) -> str:
+    """
+    Read the content of a Google Document.
+
+    Returns the document content in the specified format.
+    """
+    return documents.read_document(document_id, format)
+```
+
+### Design Patterns
+
+1. **Strongly-typed return values** - Use dataclasses for complex return types in API modules
+2. **Error handling with UserError** - Convert API errors to user-friendly messages
+3. **Logging to stderr** - Use `_log()` helper function throughout
+4. **Lazy client initialization** - Initialize Google clients on first use, not at import time
 
 ## Available Tools
 
 ### Document Operations
-- `readGoogleDoc` - Read document content (text/json/markdown)
-- `appendToGoogleDoc` - Append text to end of document
-- `insertText` - Insert text at specific index
-- `deleteRange` - Delete content range
+- `read_google_doc` - Read document content (text/json/markdown)
+- `append_to_google_doc` - Append text to end of document
+- `insert_text` - Insert text at specific index
+- `delete_range` - Delete content range
 
 ### Tab Management
-- `listDocumentTabs` - List all tabs in a document
+- `list_document_tabs` - List all tabs in a document
 
 ### Formatting
-- `applyTextStyle` - Character formatting (bold, italic, color, etc.)
-- `applyParagraphStyle` - Paragraph formatting (alignment, spacing, headings)
-- `formatMatchingText` - Find and format specific text
+- `apply_text_style` - Character formatting (bold, italic, color, etc.)
+- `apply_paragraph_style` - Paragraph formatting (alignment, spacing, headings)
+- `format_matching_text` - Find and format specific text
 
 ### Structure
-- `insertTable` - Insert a new table
-- `editTableCell` - Edit table cell content (not implemented)
-- `insertPageBreak` - Insert page break
+- `insert_table` - Insert a new table
+- `insert_page_break` - Insert page break
 
 ### Images
-- `insertImageFromUrl` - Insert image from URL
-- `insertLocalImage` - Upload and insert local image
+- `insert_image_from_url` - Insert image from URL
 
 ### Comments
-- `listComments` - List all comments
-- `getComment` - Get comment with replies
-- `addComment` - Add new comment
-- `replyToComment` - Reply to comment
-- `resolveComment` - Mark comment resolved
-- `deleteComment` - Delete comment
+- `list_comments` - List all comments
+- `get_comment` - Get comment with replies
+- `add_comment` - Add new comment
+- `reply_to_comment` - Reply to comment
+- `resolve_comment` - Mark comment resolved
+- `delete_comment` - Delete comment
 
 ### Drive Integration
-- `listGoogleDocs` - List documents from Drive
-- `searchGoogleDocs` - Search documents
+- `list_google_docs` - List documents from Drive
+- `search_google_docs` - Search documents
+- `get_recent_google_docs` - Get recently modified documents
+- `get_document_info` - Get document metadata
+- `create_folder` - Create a Drive folder
+- `list_folder_contents` - List folder contents
 
 ## Development Notes
 
 - Uses FastMCP framework for MCP server implementation
-- Uses `googleapis` library for Google API calls
-- Uses `zod` for schema validation
-- Requires Node.js 20+
+- Uses `google-api-python-client` for Google API calls
+- Uses `google-auth` and `google-auth-oauthlib` for authentication
+- Requires Python 3.10+
 
 ## Building and Running
 
-### Local Development
+### VS Code Devcontainer (Recommended for Development)
+
+The project includes a devcontainer configuration for VS Code. To use it:
+
+1. Open the project in VS Code
+2. When prompted, click "Reopen in Container" (or use Command Palette: "Dev Containers: Reopen in Container")
+3. VS Code will build the container and install dependencies automatically
+
+The devcontainer includes:
+- Python 3.12 with uv package manager
+- Docker CLI (Docker-outside-of-Docker)
+- Node.js 20 and Claude Code CLI
+- VS Code extensions: Python, Pylance, debugpy, Ruff, Claude Code
+- Port 3000 forwarded for OAuth loopback callback
+- Claude Desktop logs mounted at `/workspace/claude-desktop-logs`
+
+**Dockerfile Build Args:**
+- `CREATE_VSCODE_USER=true` - Creates a non-root vscode user for development
+- `INSTALL_MCP=false` - Dependencies installed via `postCreateCommand` instead
+
+### Local Development (without container)
 ```bash
-npm install
-npm run build
-node ./dist/server.js
+uv sync
+uv run google-docs-mcp
 ```
 
-### Docker
+### Docker Production
 ```bash
 docker-compose up --build
 ```
+
+**Dockerfile Build Args for Production:**
+- `CREATE_VSCODE_USER=false` - No vscode user needed
+- `INSTALL_MCP=true` - Dependencies baked into image
 
 ## Environment Variables
 
@@ -165,8 +234,25 @@ docker-compose up --build
 ## Testing
 
 ```bash
-npm test
+uv run pytest
 ```
+
+## Migration from TypeScript
+
+This project was ported from TypeScript to Python in December 2025. Key changes:
+
+| TypeScript | Python |
+|------------|--------|
+| `server.ts` | `server.py` |
+| `auth.ts` | `auth.py` |
+| `googleDocsApiHelpers.ts` | `api/helpers.py` |
+| `types.ts` (Zod schemas) | `types.py` (dataclasses) |
+| `console.error()` | `print(..., file=sys.stderr)` or `_log()` |
+| `fastmcp` (npm) | `fastmcp` (PyPI) |
+| `googleapis` (npm) | `google-api-python-client` (PyPI) |
+| `zod` validation | Type hints + `Annotated` |
+
+The TypeScript source files (`src/*.ts`) have been replaced by Python modules under `src/google_docs_mcp/`.
 
 ## Git Commit Guidelines
 

@@ -80,8 +80,8 @@ Run the container with port 3000 exposed:
 ```bash
 docker run -it --rm \
   -p 3000:3000 \
-  -v $(pwd)/credentials/credentials.json:/app/credentials.json:ro \
-  -v $(pwd)/credentials/token.json:/app/token.json \
+  -v $(pwd)/credentials/credentials.json:/workspace/credentials.json:ro \
+  -v $(pwd)/credentials/token.json:/workspace/token.json \
   google-docs-mcp-google-docs-mcp:latest
 ```
 
@@ -89,8 +89,8 @@ docker run -it --rm \
 ```bash
 docker run -it --rm ^
   -p 3000:3000 ^
-  -v C:/path/to/credentials/credentials.json:/app/credentials.json:ro ^
-  -v C:/path/to/credentials/token.json:/app/token.json ^
+  -v C:/path/to/credentials/credentials.json:/workspace/credentials.json:ro ^
+  -v C:/path/to/credentials/token.json:/workspace/token.json ^
   google-docs-mcp-google-docs-mcp:latest
 ```
 
@@ -140,9 +140,9 @@ Run the MCP server in a Docker container. This requires mounting the credentials
         "-p",
         "3000:3000",
         "-v",
-        "C:/docker/google-docs-mcp/credentials.json:/app/credentials.json:ro",
+        "C:/docker/google-docs-mcp/credentials.json:/workspace/credentials.json:ro",
         "-v",
-        "C:/docker/google-docs-mcp/token.json:/app/token.json",
+        "C:/docker/google-docs-mcp/token.json:/workspace/token.json",
         "google-docs-mcp-google-docs-mcp:latest"
       ]
     }
@@ -170,8 +170,9 @@ If you prefer to keep the container running in the background with `docker-compo
         "exec",
         "-i",
         "google-docs-mcp-server",
-        "node",
-        "./dist/server.js"
+        "uv",
+        "run",
+        "google-docs-mcp"
       ]
     }
   }
@@ -186,18 +187,54 @@ Restart Claude Desktop after updating the configuration.
 
 ```
 .
-├── Dockerfile           # Docker image definition
-├── docker-compose.yml   # Docker Compose configuration
+├── Dockerfile                      # Docker image definition (dev + production)
+├── docker-compose.yml              # Docker Compose for production
+├── docker-compose.devcontainer.yml # Docker Compose for VS Code devcontainer
+├── .devcontainer/
+│   └── devcontainer.json           # VS Code devcontainer configuration
 ├── src/
-│   └── auth.ts          # Patched auth module (loopback OAuth flow)
-├── credentials/         # Your Google OAuth credentials (gitignored)
-│   ├── credentials.json # OAuth client credentials
-│   └── token.json       # OAuth access token (generated after auth)
-├── .gitignore          # Git ignore rules
-└── README.md           # This file
+│   └── google_docs_mcp/            # Python source code
+│       ├── server.py               # Main MCP server entry point
+│       ├── auth.py                 # OAuth2 authentication (loopback flow)
+│       └── api/                    # API modules (documents, comments, drive)
+├── tests/                          # Test files
+├── credentials/                    # Your Google OAuth credentials (gitignored)
+│   ├── credentials.json            # OAuth client credentials
+│   └── token.json                  # OAuth access token (generated after auth)
+├── pyproject.toml                  # Python project configuration
+├── .gitignore                      # Git ignore rules
+└── README.md                       # This file
 ```
 
-**Note:** The `src/auth.ts` file is a patched version of the original that uses the loopback OAuth flow instead of the deprecated OOB flow that Google blocked in 2023.
+## Development
+
+### VS Code Devcontainer (Recommended)
+
+The project includes a devcontainer configuration for VS Code:
+
+1. Open the project in VS Code
+2. When prompted, click "Reopen in Container" (or use Command Palette: "Dev Containers: Reopen in Container")
+3. VS Code will build the container and install dependencies automatically
+
+The devcontainer includes:
+- Python 3.12 with uv package manager
+- Docker CLI (Docker-outside-of-Docker support)
+- Node.js 20 and Claude Code CLI
+- VS Code extensions: Python, Pylance, debugpy, Ruff, Claude Code
+- Port 3000 forwarded for OAuth loopback callback
+
+### Local Development (without container)
+
+```bash
+# Install dependencies
+uv sync
+
+# Run the server
+uv run google-docs-mcp
+
+# Run tests
+uv run pytest
+```
 
 ## Commands
 
@@ -207,7 +244,7 @@ Restart Claude Desktop after updating the configuration.
 | `docker-compose up -d` | Start the server in background |
 | `docker-compose down` | Stop the server |
 | `docker-compose logs -f` | View server logs |
-| `docker-compose run --rm google-docs-mcp` | Run interactively (for auth) |
+| `docker-compose --profile auth run --rm auth` | Run auth service interactively |
 
 ## Security Notes
 
