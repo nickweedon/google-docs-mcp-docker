@@ -8,8 +8,6 @@ Supports two authentication methods:
 
 import json
 import os
-import sys
-import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -19,6 +17,8 @@ from google.oauth2.service_account import Credentials as ServiceAccountCredentia
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+
+from google_docs_mcp.utils import log
 
 # Scopes required for Google Docs and Drive access
 SCOPES = [
@@ -42,11 +42,6 @@ else:
 
 TOKEN_PATH = CREDENTIALS_DIR / "token.json"
 CREDENTIALS_PATH = CREDENTIALS_DIR / "credentials.json"
-
-
-def _log(message: str) -> None:
-    """Log a message to stderr (MCP protocol compatibility)."""
-    print(message, file=sys.stderr)
 
 
 class OAuthCallbackHandler(BaseHTTPRequestHandler):
@@ -112,7 +107,7 @@ def _wait_for_auth_code(port: int, timeout: int = 300) -> str:
     server.auth_error = None
     server.timeout = timeout
 
-    _log(f"Listening for OAuth callback on http://localhost:{port}")
+    log(f"Listening for OAuth callback on http://localhost:{port}")
 
     # Use a simple loop with timeout
     server.handle_request()
@@ -150,10 +145,10 @@ def _authorize_with_service_account() -> ServiceAccountCredentials:
         credentials = ServiceAccountCredentials.from_service_account_file(
             str(path), scopes=SCOPES
         )
-        _log("Service Account authentication successful!")
+        log("Service Account authentication successful!")
         return credentials
     except Exception as e:
-        _log(f"Error loading service account key: {e}")
+        log(f"Error loading service account key: {e}")
         raise Exception(
             "Failed to authorize using the service account. "
             "Ensure the key file is valid and the path is correct."
@@ -180,7 +175,7 @@ def _load_saved_credentials() -> Credentials | None:
             return credentials
         return None
     except Exception as e:
-        _log(f"Error loading saved credentials: {e}")
+        log(f"Error loading saved credentials: {e}")
         return None
 
 
@@ -194,9 +189,9 @@ def _save_credentials(credentials: Credentials) -> None:
     try:
         with open(TOKEN_PATH, "w") as f:
             f.write(credentials.to_json())
-        _log(f"Token stored to {TOKEN_PATH}")
+        log(f"Token stored to {TOKEN_PATH}")
     except Exception as e:
-        _log(f"Error saving credentials: {e}")
+        log(f"Error saving credentials: {e}")
 
 
 def _load_client_secrets() -> dict:
@@ -238,7 +233,7 @@ def _authenticate() -> Credentials:
         Exception: If authentication fails
     """
     redirect_uri = f"http://localhost:{LOOPBACK_PORT}"
-    _log(f"Using loopback OAuth flow with redirect URI: {redirect_uri}")
+    log(f"Using loopback OAuth flow with redirect URI: {redirect_uri}")
 
     # Create flow from client secrets file
     flow = InstalledAppFlow.from_client_secrets_file(
@@ -250,14 +245,14 @@ def _authenticate() -> Credentials:
         access_type="offline", include_granted_scopes="true"
     )
 
-    _log("\n" + "=" * 60)
-    _log("Authorize this app by visiting this URL in your browser:")
-    _log("\n" + auth_url + "\n")
-    _log("=" * 60 + "\n")
+    log("\n" + "=" * 60)
+    log("Authorize this app by visiting this URL in your browser:")
+    log("\n" + auth_url + "\n")
+    log("=" * 60 + "\n")
 
     # Wait for callback
     code = _wait_for_auth_code(LOOPBACK_PORT)
-    _log("Received authorization code, exchanging for tokens...")
+    log("Received authorization code, exchanging for tokens...")
 
     try:
         flow.fetch_token(code=code)
@@ -265,11 +260,11 @@ def _authenticate() -> Credentials:
         if credentials.refresh_token:
             _save_credentials(credentials)
         else:
-            _log("Did not receive refresh token. Token might expire.")
-        _log("Authentication successful!")
+            log("Did not receive refresh token. Token might expire.")
+        log("Authentication successful!")
         return credentials
     except Exception as e:
-        _log(f"Error retrieving access token: {e}")
+        log(f"Error retrieving access token: {e}")
         raise Exception("Authentication failed")
 
 
@@ -283,15 +278,15 @@ def authorize() -> Credentials | ServiceAccountCredentials:
         Valid credentials for Google API access
     """
     if os.environ.get("SERVICE_ACCOUNT_PATH"):
-        _log("Service account path detected. Attempting service account authentication...")
+        log("Service account path detected. Attempting service account authentication...")
         return _authorize_with_service_account()
     else:
-        _log("No service account path detected. Falling back to standard OAuth 2.0 flow...")
+        log("No service account path detected. Falling back to standard OAuth 2.0 flow...")
         credentials = _load_saved_credentials()
         if credentials:
-            _log("Using saved credentials.")
+            log("Using saved credentials.")
             return credentials
-        _log("Starting authentication flow...")
+        log("Starting authentication flow...")
         return _authenticate()
 
 
@@ -317,9 +312,9 @@ def get_docs_client():
         return _docs_client
 
     if _auth_client is None:
-        _log("Attempting to authorize Google API client...")
+        log("Attempting to authorize Google API client...")
         _auth_client = authorize()
-        _log("Google API client authorized successfully.")
+        log("Google API client authorized successfully.")
 
     _docs_client = build("docs", "v1", credentials=_auth_client)
     return _docs_client
@@ -341,9 +336,9 @@ def get_drive_client():
         return _drive_client
 
     if _auth_client is None:
-        _log("Attempting to authorize Google API client...")
+        log("Attempting to authorize Google API client...")
         _auth_client = authorize()
-        _log("Google API client authorized successfully.")
+        log("Google API client authorized successfully.")
 
     _drive_client = build("drive", "v3", credentials=_auth_client)
     return _drive_client

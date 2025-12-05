@@ -5,20 +5,15 @@ Handles listing, searching, and managing files/folders in Drive.
 """
 
 import base64
-import sys
 from datetime import datetime, timedelta
 from typing import Any
 
+from fastmcp.exceptions import ToolError
 from googleapiclient.http import MediaInMemoryUpload
 from mcp.types import ImageContent
 
 from google_docs_mcp.auth import get_drive_client
-from google_docs_mcp.types import DocumentInfo, UserError
-
-
-def _log(message: str) -> None:
-    """Log a message to stderr (MCP protocol compatibility)."""
-    print(message, file=sys.stderr)
+from google_docs_mcp.utils import log
 
 
 def list_google_docs(
@@ -41,7 +36,7 @@ def list_google_docs(
         UserError: For permission errors
     """
     drive = get_drive_client()
-    _log(f"Listing Google Docs. Query: {query or 'none'}, Max: {max_results}, Order: {order_by}")
+    log(f"Listing Google Docs. Query: {query or 'none'}, Max: {max_results}, Order: {order_by}")
 
     try:
         query_string = "mimeType='application/vnd.google-apps.document' and trashed=false"
@@ -82,12 +77,12 @@ def list_google_docs(
 
     except Exception as e:
         error_message = str(e)
-        _log(f"Error listing Google Docs: {error_message}")
+        log(f"Error listing Google Docs: {error_message}")
         if "403" in error_message:
-            raise UserError(
+            raise ToolError(
                 "Permission denied. Make sure you have granted Google Drive access."
             )
-        raise UserError(f"Failed to list documents: {error_message}")
+        raise ToolError(f"Failed to list documents: {error_message}")
 
 
 def search_google_docs(
@@ -112,7 +107,7 @@ def search_google_docs(
         UserError: For permission errors
     """
     drive = get_drive_client()
-    _log(f'Searching Google Docs for: "{search_query}" in {search_in}')
+    log(f'Searching Google Docs for: "{search_query}" in {search_in}')
 
     try:
         query_string = "mimeType='application/vnd.google-apps.document' and trashed=false"
@@ -161,12 +156,12 @@ def search_google_docs(
 
     except Exception as e:
         error_message = str(e)
-        _log(f"Error searching Google Docs: {error_message}")
+        log(f"Error searching Google Docs: {error_message}")
         if "403" in error_message:
-            raise UserError(
+            raise ToolError(
                 "Permission denied. Make sure you have granted Google Drive access."
             )
-        raise UserError(f"Failed to search documents: {error_message}")
+        raise ToolError(f"Failed to search documents: {error_message}")
 
 
 def get_recent_google_docs(max_results: int = 10, days_back: int = 30) -> str:
@@ -184,7 +179,7 @@ def get_recent_google_docs(max_results: int = 10, days_back: int = 30) -> str:
         UserError: For permission errors
     """
     drive = get_drive_client()
-    _log(f"Getting recent Google Docs: {max_results} results, {days_back} days back")
+    log(f"Getting recent Google Docs: {max_results} results, {days_back} days back")
 
     try:
         cutoff_date = datetime.utcnow() - timedelta(days=days_back)
@@ -233,12 +228,12 @@ def get_recent_google_docs(max_results: int = 10, days_back: int = 30) -> str:
 
     except Exception as e:
         error_message = str(e)
-        _log(f"Error getting recent Google Docs: {error_message}")
+        log(f"Error getting recent Google Docs: {error_message}")
         if "403" in error_message:
-            raise UserError(
+            raise ToolError(
                 "Permission denied. Make sure you have granted Google Drive access."
             )
-        raise UserError(f"Failed to get recent documents: {error_message}")
+        raise ToolError(f"Failed to get recent documents: {error_message}")
 
 
 def get_document_info(document_id: str) -> str:
@@ -255,7 +250,7 @@ def get_document_info(document_id: str) -> str:
         UserError: For permission/not found errors
     """
     drive = get_drive_client()
-    _log(f"Getting info for document: {document_id}")
+    log(f"Getting info for document: {document_id}")
 
     try:
         response = (
@@ -268,7 +263,7 @@ def get_document_info(document_id: str) -> str:
         )
 
         if not response:
-            raise UserError(f"Document with ID {document_id} not found.")
+            raise ToolError(f"Document with ID {document_id} not found.")
 
         created = response.get("createdTime", "")
         if created:
@@ -302,16 +297,16 @@ def get_document_info(document_id: str) -> str:
 
         return result
 
-    except UserError:
+    except ToolError:
         raise
     except Exception as e:
         error_message = str(e)
-        _log(f"Error getting document info: {error_message}")
+        log(f"Error getting document info: {error_message}")
         if "404" in error_message:
-            raise UserError(f"Document not found (ID: {document_id}).")
+            raise ToolError(f"Document not found (ID: {document_id}).")
         if "403" in error_message:
-            raise UserError("Permission denied. Make sure you have access to this document.")
-        raise UserError(f"Failed to get document info: {error_message}")
+            raise ToolError("Permission denied. Make sure you have access to this document.")
+        raise ToolError(f"Failed to get document info: {error_message}")
 
 
 def create_folder(name: str, parent_folder_id: str | None = None) -> str:
@@ -329,7 +324,7 @@ def create_folder(name: str, parent_folder_id: str | None = None) -> str:
         UserError: For permission errors
     """
     drive = get_drive_client()
-    _log(
+    log(
         f'Creating folder "{name}" '
         f'{"in parent " + parent_folder_id if parent_folder_id else "in root"}'
     )
@@ -357,12 +352,12 @@ def create_folder(name: str, parent_folder_id: str | None = None) -> str:
 
     except Exception as e:
         error_message = str(e)
-        _log(f"Error creating folder: {error_message}")
+        log(f"Error creating folder: {error_message}")
         if "404" in error_message:
-            raise UserError("Parent folder not found. Check the parent folder ID.")
+            raise ToolError("Parent folder not found. Check the parent folder ID.")
         if "403" in error_message:
-            raise UserError("Permission denied. Make sure you have write access.")
-        raise UserError(f"Failed to create folder: {error_message}")
+            raise ToolError("Permission denied. Make sure you have write access.")
+        raise ToolError(f"Failed to create folder: {error_message}")
 
 
 def list_folder_contents(
@@ -387,7 +382,7 @@ def list_folder_contents(
         UserError: For permission/not found errors
     """
     drive = get_drive_client()
-    _log(f"Listing contents of folder: {folder_id}")
+    log(f"Listing contents of folder: {folder_id}")
 
     try:
         query_string = f"'{folder_id}' in parents and trashed=false"
@@ -444,12 +439,12 @@ def list_folder_contents(
 
     except Exception as e:
         error_message = str(e)
-        _log(f"Error listing folder contents: {error_message}")
+        log(f"Error listing folder contents: {error_message}")
         if "404" in error_message:
-            raise UserError(f"Folder not found (ID: {folder_id}).")
+            raise ToolError(f"Folder not found (ID: {folder_id}).")
         if "403" in error_message:
-            raise UserError("Permission denied. Make sure you have access to this folder.")
-        raise UserError(f"Failed to list folder contents: {error_message}")
+            raise ToolError("Permission denied. Make sure you have access to this folder.")
+        raise ToolError(f"Failed to list folder contents: {error_message}")
 
 
 def upload_image_to_drive(
@@ -473,7 +468,7 @@ def upload_image_to_drive(
     """
     drive = get_drive_client()
     mime_type = image.mimeType
-    _log(f'Uploading image "{name}" (type: {mime_type}) to Drive')
+    log(f'Uploading image "{name}" (type: {mime_type}) to Drive')
 
     try:
         # Decode base64 data from ImageContent
@@ -514,12 +509,12 @@ def upload_image_to_drive(
 
     except Exception as e:
         error_message = str(e)
-        _log(f"Error uploading image: {error_message}")
+        log(f"Error uploading image: {error_message}")
         if "404" in error_message:
-            raise UserError("Parent folder not found. Check the parent folder ID.")
+            raise ToolError("Parent folder not found. Check the parent folder ID.")
         if "403" in error_message:
-            raise UserError("Permission denied. Make sure you have write access to Drive.")
-        raise UserError(f"Failed to upload image: {error_message}")
+            raise ToolError("Permission denied. Make sure you have write access to Drive.")
+        raise ToolError(f"Failed to upload image: {error_message}")
 
 
 def upload_file_to_drive(
@@ -544,7 +539,7 @@ def upload_file_to_drive(
         UserError: For permission or upload errors
     """
     drive = get_drive_client()
-    _log(f'Uploading file "{name}" (type: {mime_type}) to Drive')
+    log(f'Uploading file "{name}" (type: {mime_type}) to Drive')
 
     try:
         # Decode base64 data
@@ -585,9 +580,9 @@ def upload_file_to_drive(
 
     except Exception as e:
         error_message = str(e)
-        _log(f"Error uploading file: {error_message}")
+        log(f"Error uploading file: {error_message}")
         if "404" in error_message:
-            raise UserError("Parent folder not found. Check the parent folder ID.")
+            raise ToolError("Parent folder not found. Check the parent folder ID.")
         if "403" in error_message:
-            raise UserError("Permission denied. Make sure you have write access to Drive.")
-        raise UserError(f"Failed to upload file: {error_message}")
+            raise ToolError("Permission denied. Make sure you have write access to Drive.")
+        raise ToolError(f"Failed to upload file: {error_message}")

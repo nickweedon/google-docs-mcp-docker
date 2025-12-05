@@ -4,17 +4,14 @@ Document operations for Google Docs MCP Server.
 Handles reading, writing, and formatting document content.
 """
 
-import sys
 from typing import Any
 
+from fastmcp.exceptions import ToolError
+
 from google_docs_mcp.auth import get_docs_client
-from google_docs_mcp.types import TextStyleArgs, ParagraphStyleArgs, UserError
+from google_docs_mcp.types import TextStyleArgs, ParagraphStyleArgs
 from google_docs_mcp.api import helpers
-
-
-def _log(message: str) -> None:
-    """Log a message to stderr (MCP protocol compatibility)."""
-    print(message, file=sys.stderr)
+from google_docs_mcp.utils import log
 
 
 def convert_docs_json_to_markdown(doc_data: dict) -> str:
@@ -183,7 +180,7 @@ def read_document(
     import json
 
     docs = get_docs_client()
-    _log(
+    log(
         f"Reading Google Doc: {document_id}, Format: {format}"
         f"{f', Tab: {tab_id}' if tab_id else ''}"
     )
@@ -206,21 +203,21 @@ def read_document(
             .execute()
         )
 
-        _log(f"Fetched doc: {document_id}{f' (tab: {tab_id})' if tab_id else ''}")
+        log(f"Fetched doc: {document_id}{f' (tab: {tab_id})' if tab_id else ''}")
 
         # Determine content source
         content_source: dict
         if tab_id:
             target_tab = helpers.find_tab_by_id(res, tab_id)
             if not target_tab:
-                raise UserError(f'Tab with ID "{tab_id}" not found in document.')
+                raise ToolError(f'Tab with ID "{tab_id}" not found in document.')
             if not target_tab.get("documentTab"):
-                raise UserError(
+                raise ToolError(
                     f'Tab "{tab_id}" does not have content (may not be a document tab).'
                 )
             content_source = {"body": target_tab["documentTab"].get("body", {})}
             tab_title = target_tab.get("tabProperties", {}).get("title", "Untitled")
-            _log(f"Using content from tab: {tab_title}")
+            log(f"Using content from tab: {tab_title}")
         else:
             content_source = res
 
@@ -236,7 +233,7 @@ def read_document(
         if format == "markdown":
             markdown_content = convert_docs_json_to_markdown(content_source)
             total_length = len(markdown_content)
-            _log(f"Generated markdown: {total_length} characters")
+            log(f"Generated markdown: {total_length} characters")
 
             if max_length and total_length > max_length:
                 truncated = markdown_content[:max_length]
@@ -278,13 +275,13 @@ def read_document(
             return "Document found, but appears empty."
 
         total_length = len(text_content)
-        _log(
+        log(
             f"Document contains {total_length} characters across {element_count} elements"
         )
 
         if max_length and total_length > max_length:
             truncated = text_content[:max_length]
-            _log(f"Truncating content from {total_length} to {max_length} characters")
+            log(f"Truncating content from {total_length} to {max_length} characters")
             return (
                 f"Content (truncated to {max_length} chars of {total_length} total):\n"
                 f"---\n{truncated}\n\n... [Document continues for "
@@ -294,16 +291,16 @@ def read_document(
 
         return f"Content ({total_length} characters):\n---\n{text_content}"
 
-    except UserError:
+    except ToolError:
         raise
     except Exception as e:
         error_message = str(e)
-        _log(f"Error reading doc {document_id}: {error_message}")
+        log(f"Error reading doc {document_id}: {error_message}")
         if "404" in error_message:
-            raise UserError(f"Doc not found (ID: {document_id}).")
+            raise ToolError(f"Doc not found (ID: {document_id}).")
         if "403" in error_message:
-            raise UserError(f"Permission denied for doc (ID: {document_id}).")
-        raise UserError(f"Failed to read doc: {error_message}")
+            raise ToolError(f"Permission denied for doc (ID: {document_id}).")
+        raise ToolError(f"Failed to read doc: {error_message}")
 
 
 def list_document_tabs(document_id: str, include_content: bool = False) -> str:
@@ -321,7 +318,7 @@ def list_document_tabs(document_id: str, include_content: bool = False) -> str:
         UserError: For permission/not found errors
     """
     docs = get_docs_client()
-    _log(f"Listing tabs for document: {document_id}")
+    log(f"Listing tabs for document: {document_id}")
 
     try:
         fields = (
@@ -383,16 +380,16 @@ def list_document_tabs(document_id: str, include_content: bool = False) -> str:
 
         return result
 
-    except UserError:
+    except ToolError:
         raise
     except Exception as e:
         error_message = str(e)
-        _log(f"Error listing tabs for doc {document_id}: {error_message}")
+        log(f"Error listing tabs for doc {document_id}: {error_message}")
         if "404" in error_message:
-            raise UserError(f"Document not found (ID: {document_id}).")
+            raise ToolError(f"Document not found (ID: {document_id}).")
         if "403" in error_message:
-            raise UserError(f"Permission denied for document (ID: {document_id}).")
-        raise UserError(f"Failed to list tabs: {error_message}")
+            raise ToolError(f"Permission denied for document (ID: {document_id}).")
+        raise ToolError(f"Failed to list tabs: {error_message}")
 
 
 def append_to_document(
@@ -417,7 +414,7 @@ def append_to_document(
         UserError: For permission/not found errors
     """
     docs = get_docs_client()
-    _log(
+    log(
         f"Appending to Google Doc: {document_id}"
         f"{f' (tab: {tab_id})' if tab_id else ''}"
     )
@@ -441,9 +438,9 @@ def append_to_document(
         if tab_id:
             target_tab = helpers.find_tab_by_id(doc_info, tab_id)
             if not target_tab:
-                raise UserError(f'Tab with ID "{tab_id}" not found in document.')
+                raise ToolError(f'Tab with ID "{tab_id}" not found in document.')
             if not target_tab.get("documentTab"):
-                raise UserError(
+                raise ToolError(
                     f'Tab "{tab_id}" does not have content (may not be a document tab).'
                 )
             body_content = (
@@ -471,7 +468,7 @@ def append_to_document(
         request = {"insertText": {"location": location, "text": text_to_insert}}
         helpers.execute_batch_update_sync(docs, document_id, [request])
 
-        _log(
+        log(
             f"Successfully appended to doc: {document_id}"
             f"{f' (tab: {tab_id})' if tab_id else ''}"
         )
@@ -480,12 +477,12 @@ def append_to_document(
             f"{f'tab {tab_id} in ' if tab_id else ''}document {document_id}."
         )
 
-    except UserError:
+    except ToolError:
         raise
     except Exception as e:
         error_message = str(e)
-        _log(f"Error appending to doc {document_id}: {error_message}")
-        raise UserError(f"Failed to append to doc: {error_message}")
+        log(f"Error appending to doc {document_id}: {error_message}")
+        raise ToolError(f"Failed to append to doc: {error_message}")
 
 
 def insert_text(
@@ -510,7 +507,7 @@ def insert_text(
         UserError: For permission/not found errors
     """
     docs = get_docs_client()
-    _log(
+    log(
         f"Inserting text in doc {document_id} at index {index}"
         f"{f' (tab: {tab_id})' if tab_id else ''}"
     )
@@ -528,9 +525,9 @@ def insert_text(
             )
             target_tab = helpers.find_tab_by_id(doc_info, tab_id)
             if not target_tab:
-                raise UserError(f'Tab with ID "{tab_id}" not found in document.')
+                raise ToolError(f'Tab with ID "{tab_id}" not found in document.')
             if not target_tab.get("documentTab"):
-                raise UserError(
+                raise ToolError(
                     f'Tab "{tab_id}" does not have content (may not be a document tab).'
                 )
 
@@ -545,12 +542,12 @@ def insert_text(
             f"{f' in tab {tab_id}' if tab_id else ''}."
         )
 
-    except UserError:
+    except ToolError:
         raise
     except Exception as e:
         error_message = str(e)
-        _log(f"Error inserting text in doc {document_id}: {error_message}")
-        raise UserError(f"Failed to insert text: {error_message}")
+        log(f"Error inserting text in doc {document_id}: {error_message}")
+        raise ToolError(f"Failed to insert text: {error_message}")
 
 
 def delete_range(
@@ -575,13 +572,13 @@ def delete_range(
         UserError: For permission/not found errors or invalid range
     """
     docs = get_docs_client()
-    _log(
+    log(
         f"Deleting range {start_index}-{end_index} in doc {document_id}"
         f"{f' (tab: {tab_id})' if tab_id else ''}"
     )
 
     if end_index <= start_index:
-        raise UserError("End index must be greater than start index for deletion.")
+        raise ToolError("End index must be greater than start index for deletion.")
 
     try:
         if tab_id:
@@ -596,9 +593,9 @@ def delete_range(
             )
             target_tab = helpers.find_tab_by_id(doc_info, tab_id)
             if not target_tab:
-                raise UserError(f'Tab with ID "{tab_id}" not found in document.')
+                raise ToolError(f'Tab with ID "{tab_id}" not found in document.')
             if not target_tab.get("documentTab"):
-                raise UserError(
+                raise ToolError(
                     f'Tab "{tab_id}" does not have content (may not be a document tab).'
                 )
 
@@ -617,12 +614,12 @@ def delete_range(
             f"{f' in tab {tab_id}' if tab_id else ''}."
         )
 
-    except UserError:
+    except ToolError:
         raise
     except Exception as e:
         error_message = str(e)
-        _log(f"Error deleting range in doc {document_id}: {error_message}")
-        raise UserError(f"Failed to delete range: {error_message}")
+        log(f"Error deleting range in doc {document_id}: {error_message}")
+        raise ToolError(f"Failed to delete range: {error_message}")
 
 
 def apply_text_style(
@@ -651,7 +648,7 @@ def apply_text_style(
         UserError: For permission/not found errors
     """
     docs = get_docs_client()
-    _log(
+    log(
         f"Applying text style in doc {document_id}. "
         f"Target: range={start_index}-{end_index}, text='{text_to_find}'"
     )
@@ -663,20 +660,20 @@ def apply_text_style(
                 docs, document_id, text_to_find, match_instance
             )
             if not text_range:
-                raise UserError(
+                raise ToolError(
                     f'Could not find instance {match_instance} of text "{text_to_find}".'
                 )
             start_index = text_range.start_index
             end_index = text_range.end_index
-            _log(
+            log(
                 f'Found text "{text_to_find}" (instance {match_instance}) '
                 f"at range {start_index}-{end_index}"
             )
 
         if start_index is None or end_index is None:
-            raise UserError("Target range could not be determined.")
+            raise ToolError("Target range could not be determined.")
         if end_index <= start_index:
-            raise UserError("End index must be greater than start index for styling.")
+            raise ToolError("End index must be greater than start index for styling.")
 
         # Build the request
         request_info = helpers.build_update_text_style_request(
@@ -691,12 +688,12 @@ def apply_text_style(
             f"to range {start_index}-{end_index}."
         )
 
-    except UserError:
+    except ToolError:
         raise
     except Exception as e:
         error_message = str(e)
-        _log(f"Error applying text style in doc {document_id}: {error_message}")
-        raise UserError(f"Failed to apply text style: {error_message}")
+        log(f"Error applying text style in doc {document_id}: {error_message}")
+        raise ToolError(f"Failed to apply text style: {error_message}")
 
 
 def apply_paragraph_style(
@@ -727,19 +724,19 @@ def apply_paragraph_style(
         UserError: For permission/not found errors
     """
     docs = get_docs_client()
-    _log(f"Applying paragraph style to document {document_id}")
+    log(f"Applying paragraph style to document {document_id}")
 
     try:
         # Determine target range
         if text_to_find:
-            _log(f'Finding text "{text_to_find}" (instance {match_instance})')
+            log(f'Finding text "{text_to_find}" (instance {match_instance})')
             text_range = helpers.find_text_range(
                 docs, document_id, text_to_find, match_instance
             )
             if not text_range:
-                raise UserError(f'Could not find "{text_to_find}" in the document.')
+                raise ToolError(f'Could not find "{text_to_find}" in the document.')
 
-            _log(
+            log(
                 f"Found text at range {text_range.start_index}-{text_range.end_index}, "
                 f"now locating containing paragraph"
             )
@@ -748,40 +745,40 @@ def apply_paragraph_style(
                 docs, document_id, text_range.start_index
             )
             if not paragraph_range:
-                raise UserError(
+                raise ToolError(
                     "Found the text but could not determine the paragraph boundaries."
                 )
 
             start_index = paragraph_range.start_index
             end_index = paragraph_range.end_index
-            _log(f"Text is contained within paragraph at range {start_index}-{end_index}")
+            log(f"Text is contained within paragraph at range {start_index}-{end_index}")
 
         elif index_within_paragraph is not None:
-            _log(f"Finding paragraph containing index {index_within_paragraph}")
+            log(f"Finding paragraph containing index {index_within_paragraph}")
             paragraph_range = helpers.get_paragraph_range(
                 docs, document_id, index_within_paragraph
             )
             if not paragraph_range:
-                raise UserError(
+                raise ToolError(
                     f"Could not find paragraph containing index {index_within_paragraph}."
                 )
 
             start_index = paragraph_range.start_index
             end_index = paragraph_range.end_index
-            _log(f"Located paragraph at range {start_index}-{end_index}")
+            log(f"Located paragraph at range {start_index}-{end_index}")
 
         if start_index is None or end_index is None:
-            raise UserError(
+            raise ToolError(
                 "Could not determine target paragraph range from the provided information."
             )
         if end_index <= start_index:
-            raise UserError(
+            raise ToolError(
                 f"Invalid paragraph range: end index ({end_index}) must be "
                 f"greater than start index ({start_index})."
             )
 
         # Build and apply the paragraph style request
-        _log(f"Building paragraph style request for range {start_index}-{end_index}")
+        log(f"Building paragraph style request for range {start_index}-{end_index}")
         request_info = helpers.build_update_paragraph_style_request(
             start_index, end_index, style
         )
@@ -789,7 +786,7 @@ def apply_paragraph_style(
         if not request_info:
             return "No valid paragraph styling options were provided."
 
-        _log(f"Applying styles: {', '.join(request_info['fields'])}")
+        log(f"Applying styles: {', '.join(request_info['fields'])}")
         helpers.execute_batch_update_sync(docs, document_id, [request_info["request"]])
 
         return (
@@ -797,12 +794,12 @@ def apply_paragraph_style(
             f"({', '.join(request_info['fields'])}) to the paragraph."
         )
 
-    except UserError:
+    except ToolError:
         raise
     except Exception as e:
         error_message = str(e)
-        _log(f"Error applying paragraph style in doc {document_id}: {error_message}")
-        raise UserError(f"Failed to apply paragraph style: {error_message}")
+        log(f"Error applying paragraph style in doc {document_id}: {error_message}")
+        raise ToolError(f"Failed to apply paragraph style: {error_message}")
 
 
 def insert_table(document_id: str, rows: int, columns: int, index: int) -> str:
@@ -822,18 +819,18 @@ def insert_table(document_id: str, rows: int, columns: int, index: int) -> str:
         UserError: For permission/not found errors
     """
     docs = get_docs_client()
-    _log(f"Inserting {rows}x{columns} table in doc {document_id} at index {index}")
+    log(f"Inserting {rows}x{columns} table in doc {document_id} at index {index}")
 
     try:
         helpers.create_table(docs, document_id, rows, columns, index)
         return f"Successfully inserted a {rows}x{columns} table at index {index}."
 
-    except UserError:
+    except ToolError:
         raise
     except Exception as e:
         error_message = str(e)
-        _log(f"Error inserting table in doc {document_id}: {error_message}")
-        raise UserError(f"Failed to insert table: {error_message}")
+        log(f"Error inserting table in doc {document_id}: {error_message}")
+        raise ToolError(f"Failed to insert table: {error_message}")
 
 
 def insert_page_break(document_id: str, index: int) -> str:
@@ -851,19 +848,19 @@ def insert_page_break(document_id: str, index: int) -> str:
         UserError: For permission/not found errors
     """
     docs = get_docs_client()
-    _log(f"Inserting page break in doc {document_id} at index {index}")
+    log(f"Inserting page break in doc {document_id} at index {index}")
 
     try:
         request = {"insertPageBreak": {"location": {"index": index}}}
         helpers.execute_batch_update_sync(docs, document_id, [request])
         return f"Successfully inserted page break at index {index}."
 
-    except UserError:
+    except ToolError:
         raise
     except Exception as e:
         error_message = str(e)
-        _log(f"Error inserting page break in doc {document_id}: {error_message}")
-        raise UserError(f"Failed to insert page break: {error_message}")
+        log(f"Error inserting page break in doc {document_id}: {error_message}")
+        raise ToolError(f"Failed to insert page break: {error_message}")
 
 
 def insert_image_from_url(
@@ -890,7 +887,7 @@ def insert_image_from_url(
         UserError: For permission/not found errors or invalid URL
     """
     docs = get_docs_client()
-    _log(f"Inserting image from URL {image_url} at index {index} in doc {document_id}")
+    log(f"Inserting image from URL {image_url} at index {index} in doc {document_id}")
 
     try:
         helpers.insert_inline_image(docs, document_id, image_url, index, width, height)
@@ -901,9 +898,9 @@ def insert_image_from_url(
 
         return f"Successfully inserted image from URL at index {index}{size_info}."
 
-    except UserError:
+    except ToolError:
         raise
     except Exception as e:
         error_message = str(e)
-        _log(f"Error inserting image in doc {document_id}: {error_message}")
-        raise UserError(f"Failed to insert image: {error_message}")
+        log(f"Error inserting image in doc {document_id}: {error_message}")
+        raise ToolError(f"Failed to insert image: {error_message}")

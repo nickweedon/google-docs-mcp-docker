@@ -4,8 +4,9 @@ Helper functions for Google Docs API operations.
 Ported from googleDocsApiHelpers.ts
 """
 
-import sys
 from typing import Any
+
+from fastmcp.exceptions import ToolError
 
 from google_docs_mcp.types import (
     TextStyleArgs,
@@ -13,14 +14,9 @@ from google_docs_mcp.types import (
     TextRange,
     TabInfo,
     hex_to_rgb_color,
-    UserError,
     NotImplementedError,
 )
-
-
-def _log(message: str) -> None:
-    """Log a message to stderr (MCP protocol compatibility)."""
-    print(message, file=sys.stderr)
+from google_docs_mcp.utils import log
 
 
 # --- Constants ---
@@ -28,9 +24,7 @@ MAX_BATCH_UPDATE_REQUESTS = 50
 
 
 # --- Core Helper to Execute Batch Updates ---
-async def execute_batch_update(
-    docs, document_id: str, requests: list[dict]
-) -> dict | None:
+def execute_batch_update_sync(docs, document_id: str, requests: list[dict]) -> dict | None:
     """
     Execute a batch update request on a Google Document.
 
@@ -43,14 +37,14 @@ async def execute_batch_update(
         Batch update response data
 
     Raises:
-        UserError: For client-facing errors
+        ToolError: For client-facing errors
         Exception: For internal errors
     """
     if not requests:
         return {}
 
     if len(requests) > MAX_BATCH_UPDATE_REQUESTS:
-        _log(
+        log(
             f"Attempting batch update with {len(requests)} requests, "
             f"exceeding typical limits. May fail."
         )
@@ -64,68 +58,18 @@ async def execute_batch_update(
         return response
     except Exception as e:
         error_message = str(e)
-        _log(f"Google API batchUpdate Error for doc {document_id}: {error_message}")
+        log(f"Google API batchUpdate Error for doc {document_id}: {error_message}")
 
         # Handle common API errors
         if "404" in error_message:
-            raise UserError(f"Document not found (ID: {document_id}). Check the ID.")
+            raise ToolError(f"Document not found (ID: {document_id}). Check the ID.")
         if "403" in error_message:
-            raise UserError(
+            raise ToolError(
                 f"Permission denied for document (ID: {document_id}). "
                 f"Ensure the authenticated user has edit access."
             )
         if "400" in error_message:
-            raise UserError(f"Invalid request sent to Google Docs API: {error_message}")
-
-        raise Exception(f"Google API Error: {error_message}")
-
-
-def execute_batch_update_sync(docs, document_id: str, requests: list[dict]) -> dict | None:
-    """
-    Execute a batch update request on a Google Document (synchronous version).
-
-    Args:
-        docs: Google Docs API client
-        document_id: The document ID
-        requests: List of update requests
-
-    Returns:
-        Batch update response data
-
-    Raises:
-        UserError: For client-facing errors
-        Exception: For internal errors
-    """
-    if not requests:
-        return {}
-
-    if len(requests) > MAX_BATCH_UPDATE_REQUESTS:
-        _log(
-            f"Attempting batch update with {len(requests)} requests, "
-            f"exceeding typical limits. May fail."
-        )
-
-    try:
-        response = (
-            docs.documents()
-            .batchUpdate(documentId=document_id, body={"requests": requests})
-            .execute()
-        )
-        return response
-    except Exception as e:
-        error_message = str(e)
-        _log(f"Google API batchUpdate Error for doc {document_id}: {error_message}")
-
-        # Handle common API errors
-        if "404" in error_message:
-            raise UserError(f"Document not found (ID: {document_id}). Check the ID.")
-        if "403" in error_message:
-            raise UserError(
-                f"Permission denied for document (ID: {document_id}). "
-                f"Ensure the authenticated user has edit access."
-            )
-        if "400" in error_message:
-            raise UserError(f"Invalid request sent to Google Docs API: {error_message}")
+            raise ToolError(f"Invalid request sent to Google Docs API: {error_message}")
 
         raise Exception(f"Google API Error: {error_message}")
 
@@ -164,7 +108,7 @@ def find_text_range(
         content = body.get("content", [])
 
         if not content:
-            _log(f"No content found in document {document_id}")
+            log(f"No content found in document {document_id}")
             return None
 
         # Collect text segments with their indices
@@ -208,7 +152,7 @@ def find_text_range(
         # Sort segments by starting position
         segments.sort(key=lambda x: x["start"])
 
-        _log(
+        log(
             f"Document {document_id} contains {len(segments)} text segments "
             f"and {len(full_text)} characters in total."
         )
@@ -222,14 +166,14 @@ def find_text_range(
         while found_count < instance:
             current_index = full_text.find(text_to_find, search_start_index)
             if current_index == -1:
-                _log(
+                log(
                     f'Search text "{text_to_find}" not found for instance '
                     f"{found_count + 1} (requested: {instance})"
                 )
                 break
 
             found_count += 1
-            _log(
+            log(
                 f'Found instance {found_count} of "{text_to_find}" '
                 f"at position {current_index} in full text"
             )
@@ -239,7 +183,7 @@ def find_text_range(
                 target_end = current_index + len(text_to_find)
                 current_pos = 0
 
-                _log(f"Target text range in full text: {target_start}-{target_end}")
+                log(f"Target text range in full text: {target_start}-{target_end}")
 
                 for seg in segments:
                     seg_start = current_pos
@@ -253,14 +197,14 @@ def find_text_range(
                         and target_start < seg_end
                     ):
                         start_index = seg["start"] + (target_start - seg_start)
-                        _log(
+                        log(
                             f"Mapped start to segment {seg['start']}-{seg['end']}, "
                             f"position {start_index}"
                         )
 
                     if target_end > seg_start and target_end <= seg_end:
                         end_index = seg["start"] + (target_end - seg_start)
-                        _log(
+                        log(
                             f"Mapped end to segment {seg['start']}-{seg['end']}, "
                             f"position {end_index}"
                         )
@@ -269,7 +213,7 @@ def find_text_range(
                     current_pos = seg_end
 
                 if start_index == -1 or end_index == -1:
-                    _log(
+                    log(
                         f'Failed to map text "{text_to_find}" instance {instance} '
                         f"to actual document indices"
                     )
@@ -279,7 +223,7 @@ def find_text_range(
                     found_count -= 1
                     continue
 
-                _log(
+                log(
                     f'Successfully mapped "{text_to_find}" to document range '
                     f"{start_index}-{end_index}"
                 )
@@ -288,7 +232,7 @@ def find_text_range(
             # Prepare for next search iteration
             search_start_index = current_index + 1
 
-        _log(
+        log(
             f'Could not find instance {instance} of text "{text_to_find}" '
             f"in document {document_id}"
         )
@@ -296,15 +240,15 @@ def find_text_range(
 
     except Exception as e:
         error_message = str(e)
-        _log(
+        log(
             f'Error finding text "{text_to_find}" in doc {document_id}: {error_message}'
         )
         if "404" in error_message:
-            raise UserError(
+            raise ToolError(
                 f"Document not found while searching text (ID: {document_id})."
             )
         if "403" in error_message:
-            raise UserError(
+            raise ToolError(
                 f"Permission denied while searching text in doc {document_id}."
             )
         raise Exception(f"Failed to retrieve doc for text searching: {error_message}")
@@ -329,7 +273,7 @@ def get_paragraph_range(
         UserError: For permission/not found errors
     """
     try:
-        _log(f"Finding paragraph containing index {index_within} in document {document_id}")
+        log(f"Finding paragraph containing index {index_within} in document {document_id}")
 
         res = (
             docs.documents()
@@ -344,7 +288,7 @@ def get_paragraph_range(
         content = body.get("content", [])
 
         if not content:
-            _log(f"No content found in document {document_id}")
+            log(f"No content found in document {document_id}")
             return None
 
         def find_paragraph_in_content(
@@ -358,7 +302,7 @@ def get_paragraph_range(
                     if index_within >= start_idx and index_within < end_idx:
                         # If it's a paragraph, we've found our target
                         if element.get("paragraph"):
-                            _log(
+                            log(
                                 f"Found paragraph containing index {index_within}, "
                                 f"range: {start_idx}-{end_idx}"
                             )
@@ -367,7 +311,7 @@ def get_paragraph_range(
                         # If it's a table, search cells recursively
                         table = element.get("table", {})
                         if table.get("tableRows"):
-                            _log(
+                            log(
                                 f"Index {index_within} is within a table, searching cells..."
                             )
                             for row in table["tableRows"]:
@@ -379,7 +323,7 @@ def get_paragraph_range(
                                         if result:
                                             return result
 
-                        _log(
+                        log(
                             f"Index {index_within} is within element "
                             f"({start_idx}-{end_idx}) but not in a paragraph"
                         )
@@ -389,9 +333,9 @@ def get_paragraph_range(
         result = find_paragraph_in_content(content)
 
         if not result:
-            _log(f"Could not find paragraph containing index {index_within}")
+            log(f"Could not find paragraph containing index {index_within}")
         else:
-            _log(
+            log(
                 f"Returning paragraph range: {result.start_index}-{result.end_index}"
             )
 
@@ -399,16 +343,16 @@ def get_paragraph_range(
 
     except Exception as e:
         error_message = str(e)
-        _log(
+        log(
             f"Error getting paragraph range for index {index_within} "
             f"in doc {document_id}: {error_message}"
         )
         if "404" in error_message:
-            raise UserError(
+            raise ToolError(
                 f"Document not found while finding paragraph (ID: {document_id})."
             )
         if "403" in error_message:
-            raise UserError(
+            raise ToolError(
                 f"Permission denied while accessing doc {document_id}."
             )
         raise Exception(f"Failed to find paragraph: {error_message}")
@@ -462,7 +406,7 @@ def build_update_text_style_request(
     if style.foreground_color is not None:
         rgb_color = hex_to_rgb_color(style.foreground_color)
         if not rgb_color:
-            raise UserError(
+            raise ToolError(
                 f"Invalid foreground hex color format: {style.foreground_color}"
             )
         text_style["foregroundColor"] = {"color": {"rgbColor": rgb_color}}
@@ -471,7 +415,7 @@ def build_update_text_style_request(
     if style.background_color is not None:
         rgb_color = hex_to_rgb_color(style.background_color)
         if not rgb_color:
-            raise UserError(
+            raise ToolError(
                 f"Invalid background hex color format: {style.background_color}"
             )
         text_style["backgroundColor"] = {"color": {"rgbColor": rgb_color}}
@@ -512,7 +456,7 @@ def build_update_paragraph_style_request(
     paragraph_style: dict[str, Any] = {}
     fields_to_update: list[str] = []
 
-    _log(
+    log(
         f"Building paragraph style request for range {start_index}-{end_index} "
         f"with options: {style}"
     )
@@ -520,7 +464,7 @@ def build_update_paragraph_style_request(
     if style.alignment is not None:
         paragraph_style["alignment"] = style.alignment
         fields_to_update.append("alignment")
-        _log(f"Setting alignment to {style.alignment}")
+        log(f"Setting alignment to {style.alignment}")
 
     if style.indent_start is not None:
         paragraph_style["indentStart"] = {
@@ -528,35 +472,35 @@ def build_update_paragraph_style_request(
             "unit": "PT",
         }
         fields_to_update.append("indentStart")
-        _log(f"Setting left indent to {style.indent_start}pt")
+        log(f"Setting left indent to {style.indent_start}pt")
 
     if style.indent_end is not None:
         paragraph_style["indentEnd"] = {"magnitude": style.indent_end, "unit": "PT"}
         fields_to_update.append("indentEnd")
-        _log(f"Setting right indent to {style.indent_end}pt")
+        log(f"Setting right indent to {style.indent_end}pt")
 
     if style.space_above is not None:
         paragraph_style["spaceAbove"] = {"magnitude": style.space_above, "unit": "PT"}
         fields_to_update.append("spaceAbove")
-        _log(f"Setting space above to {style.space_above}pt")
+        log(f"Setting space above to {style.space_above}pt")
 
     if style.space_below is not None:
         paragraph_style["spaceBelow"] = {"magnitude": style.space_below, "unit": "PT"}
         fields_to_update.append("spaceBelow")
-        _log(f"Setting space below to {style.space_below}pt")
+        log(f"Setting space below to {style.space_below}pt")
 
     if style.named_style_type is not None:
         paragraph_style["namedStyleType"] = style.named_style_type
         fields_to_update.append("namedStyleType")
-        _log(f"Setting named style to {style.named_style_type}")
+        log(f"Setting named style to {style.named_style_type}")
 
     if style.keep_with_next is not None:
         paragraph_style["keepWithNext"] = style.keep_with_next
         fields_to_update.append("keepWithNext")
-        _log(f"Setting keepWithNext to {style.keep_with_next}")
+        log(f"Setting keepWithNext to {style.keep_with_next}")
 
     if not fields_to_update:
-        _log("No paragraph styling options were provided")
+        log("No paragraph styling options were provided")
         return None
 
     request = {
@@ -567,7 +511,7 @@ def build_update_paragraph_style_request(
         }
     }
 
-    _log(f"Created paragraph style request with fields: {', '.join(fields_to_update)}")
+    log(f"Created paragraph style request with fields: {', '.join(fields_to_update)}")
     return {"request": request, "fields": fields_to_update}
 
 
@@ -592,7 +536,7 @@ def create_table(
         UserError: If table dimensions are invalid
     """
     if rows < 1 or columns < 1:
-        raise UserError("Table must have at least 1 row and 1 column.")
+        raise ToolError("Table must have at least 1 row and 1 column.")
 
     request = {
         "insertTable": {
@@ -658,7 +602,7 @@ def insert_inline_image(
         if not all([result.scheme, result.netloc]):
             raise ValueError("Invalid URL")
     except Exception:
-        raise UserError(f"Invalid image URL format: {image_url}")
+        raise ToolError(f"Invalid image URL format: {image_url}")
 
     request: dict[str, Any] = {
         "insertInlineImage": {"location": {"index": index}, "uri": image_url}
@@ -795,7 +739,7 @@ def detect_and_format_lists(
 
     NOT IMPLEMENTED.
     """
-    _log("detect_and_format_lists is not implemented.")
+    log("detect_and_format_lists is not implemented.")
     raise NotImplementedError(
         "Automatic list detection and formatting is not yet implemented."
     )
@@ -809,7 +753,7 @@ def find_paragraphs_matching_style(
 
     NOT IMPLEMENTED.
     """
-    _log("find_paragraphs_matching_style is not implemented.")
+    log("find_paragraphs_matching_style is not implemented.")
     raise NotImplementedError(
         "Finding paragraphs by style criteria is not yet implemented."
     )

@@ -100,35 +100,6 @@ class TabInfo:
     text_length: int | None = None
 
 
-@dataclass
-class DocumentInfo:
-    """Information about a Google Document."""
-
-    document_id: str
-    title: str
-    created_time: str | None = None
-    modified_time: str | None = None
-    owner_name: str | None = None
-    owner_email: str | None = None
-    last_modified_by: str | None = None
-    shared: bool = False
-    web_view_link: str | None = None
-    description: str | None = None
-
-
-@dataclass
-class CommentInfo:
-    """Information about a comment."""
-
-    comment_id: str
-    content: str
-    author: str
-    created_time: str
-    resolved: bool = False
-    quoted_text: str | None = None
-    reply_count: int = 0
-
-
 # --- Custom Exceptions ---
 class NotImplementedError(Exception):
     """Raised when a feature is not yet implemented."""
@@ -136,11 +107,3 @@ class NotImplementedError(Exception):
     def __init__(self, message: str = "This feature is not yet implemented."):
         super().__init__(message)
         self.name = "NotImplementedError"
-
-
-class UserError(Exception):
-    """Raised for user-facing errors."""
-
-    def __init__(self, message: str):
-        super().__init__(message)
-        self.name = "UserError"

@@ -5,17 +5,11 @@ Handles listing, creating, and managing comments on documents.
 """
 
 import json
-import sys
-from typing import Any
 
-from google_docs_mcp.auth import get_docs_client, get_drive_client, get_auth_client
-from google_docs_mcp.types import CommentInfo, UserError
-from googleapiclient.discovery import build
+from fastmcp.exceptions import ToolError
 
-
-def _log(message: str) -> None:
-    """Log a message to stderr (MCP protocol compatibility)."""
-    print(message, file=sys.stderr)
+from google_docs_mcp.auth import get_docs_client, get_drive_client
+from google_docs_mcp.utils import log
 
 
 def list_comments(document_id: str) -> str:
@@ -31,12 +25,11 @@ def list_comments(document_id: str) -> str:
     Raises:
         UserError: For permission/not found errors
     """
-    _log(f"Listing comments for document {document_id}")
+    log(f"Listing comments for document {document_id}")
 
     try:
         # Use Drive API v3 for comments
-        auth_client = get_auth_client()
-        drive = build("drive", "v3", credentials=auth_client)
+        drive = get_drive_client()
 
         response = (
             drive.comments()
@@ -87,8 +80,8 @@ def list_comments(document_id: str) -> str:
 
     except Exception as e:
         error_message = str(e)
-        _log(f"Error listing comments: {error_message}")
-        raise UserError(f"Failed to list comments: {error_message}")
+        log(f"Error listing comments: {error_message}")
+        raise ToolError(f"Failed to list comments: {error_message}")
 
 
 def get_comment(document_id: str, comment_id: str) -> str:
@@ -105,11 +98,10 @@ def get_comment(document_id: str, comment_id: str) -> str:
     Raises:
         UserError: For permission/not found errors
     """
-    _log(f"Getting comment {comment_id} from document {document_id}")
+    log(f"Getting comment {comment_id} from document {document_id}")
 
     try:
-        auth_client = get_auth_client()
-        drive = build("drive", "v3", credentials=auth_client)
+        drive = get_drive_client()
 
         response = (
             drive.comments()
@@ -149,8 +141,8 @@ def get_comment(document_id: str, comment_id: str) -> str:
 
     except Exception as e:
         error_message = str(e)
-        _log(f"Error getting comment: {error_message}")
-        raise UserError(f"Failed to get comment: {error_message}")
+        log(f"Error getting comment: {error_message}")
+        raise ToolError(f"Failed to get comment: {error_message}")
 
 
 def add_comment(
@@ -175,10 +167,10 @@ def add_comment(
     Raises:
         UserError: For permission/not found errors
     """
-    _log(f"Adding comment to range {start_index}-{end_index} in doc {document_id}")
+    log(f"Adding comment to range {start_index}-{end_index} in doc {document_id}")
 
     if end_index <= start_index:
-        raise UserError("End index must be greater than start index.")
+        raise ToolError("End index must be greater than start index.")
 
     try:
         # First get the quoted text from the document
@@ -205,8 +197,7 @@ def add_comment(
                         quoted_text += text[start_offset:end_offset]
 
         # Use Drive API v3 for comments
-        auth_client = get_auth_client()
-        drive = build("drive", "v3", credentials=auth_client)
+        drive = get_drive_client()
 
         response = (
             drive.comments()
@@ -240,12 +231,12 @@ def add_comment(
 
         return f"Comment added successfully. Comment ID: {response.get('id')}"
 
-    except UserError:
+    except ToolError:
         raise
     except Exception as e:
         error_message = str(e)
-        _log(f"Error adding comment: {error_message}")
-        raise UserError(f"Failed to add comment: {error_message}")
+        log(f"Error adding comment: {error_message}")
+        raise ToolError(f"Failed to add comment: {error_message}")
 
 
 def reply_to_comment(document_id: str, comment_id: str, reply_text: str) -> str:
@@ -263,11 +254,10 @@ def reply_to_comment(document_id: str, comment_id: str, reply_text: str) -> str:
     Raises:
         UserError: For permission/not found errors
     """
-    _log(f"Adding reply to comment {comment_id} in doc {document_id}")
+    log(f"Adding reply to comment {comment_id} in doc {document_id}")
 
     try:
-        auth_client = get_auth_client()
-        drive = build("drive", "v3", credentials=auth_client)
+        drive = get_drive_client()
 
         response = (
             drive.replies()
@@ -284,8 +274,8 @@ def reply_to_comment(document_id: str, comment_id: str, reply_text: str) -> str:
 
     except Exception as e:
         error_message = str(e)
-        _log(f"Error adding reply: {error_message}")
-        raise UserError(f"Failed to add reply: {error_message}")
+        log(f"Error adding reply: {error_message}")
+        raise ToolError(f"Failed to add reply: {error_message}")
 
 
 def resolve_comment(document_id: str, comment_id: str) -> str:
@@ -305,11 +295,10 @@ def resolve_comment(document_id: str, comment_id: str) -> str:
     Raises:
         UserError: For permission/not found errors
     """
-    _log(f"Resolving comment {comment_id} in doc {document_id}")
+    log(f"Resolving comment {comment_id} in doc {document_id}")
 
     try:
-        auth_client = get_auth_client()
-        drive = build("drive", "v3", credentials=auth_client)
+        drive = get_drive_client()
 
         # Get current comment content (required by API)
         current = (
@@ -344,8 +333,8 @@ def resolve_comment(document_id: str, comment_id: str) -> str:
 
     except Exception as e:
         error_message = str(e)
-        _log(f"Error resolving comment: {error_message}")
-        raise UserError(f"Failed to resolve comment: {error_message}")
+        log(f"Error resolving comment: {error_message}")
+        raise ToolError(f"Failed to resolve comment: {error_message}")
 
 
 def delete_comment(document_id: str, comment_id: str) -> str:
@@ -362,11 +351,10 @@ def delete_comment(document_id: str, comment_id: str) -> str:
     Raises:
         UserError: For permission/not found errors
     """
-    _log(f"Deleting comment {comment_id} from doc {document_id}")
+    log(f"Deleting comment {comment_id} from doc {document_id}")
 
     try:
-        auth_client = get_auth_client()
-        drive = build("drive", "v3", credentials=auth_client)
+        drive = get_drive_client()
 
         drive.comments().delete(fileId=document_id, commentId=comment_id).execute()
 
@@ -374,5 +362,5 @@ def delete_comment(document_id: str, comment_id: str) -> str:
 
     except Exception as e:
         error_message = str(e)
-        _log(f"Error deleting comment: {error_message}")
-        raise UserError(f"Failed to delete comment: {error_message}")
+        log(f"Error deleting comment: {error_message}")
+        raise ToolError(f"Failed to delete comment: {error_message}")

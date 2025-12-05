@@ -4,23 +4,18 @@ Google Docs MCP Server
 Main MCP server entry point with all tool definitions.
 Uses FastMCP framework for MCP protocol implementation.
 
-IMPORTANT: All logging must use stderr (via _log function), never stdout.
+IMPORTANT: All logging must use stderr, never stdout.
 The MCP protocol uses stdout for JSON-RPC communication.
 """
 
-import sys
 from typing import Annotated
 
 from fastmcp import FastMCP
 from mcp.types import ImageContent
 
-from google_docs_mcp.types import TextStyleArgs, ParagraphStyleArgs, UserError
+from google_docs_mcp.types import TextStyleArgs, ParagraphStyleArgs
 from google_docs_mcp.api import documents, comments, drive
-
-
-def _log(message: str) -> None:
-    """Log a message to stderr (MCP protocol compatibility)."""
-    print(message, file=sys.stderr)
+from google_docs_mcp.utils import log
 
 
 # Create MCP server
@@ -46,7 +41,7 @@ mcp = FastMCP(
 # === DOCUMENT TOOLS ===
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def read_google_doc(
     document_id: Annotated[str, "The ID of the Google Document (from the URL)"],
     format: Annotated[
@@ -71,7 +66,7 @@ def read_google_doc(
     return documents.read_document(document_id, format, max_length, tab_id)
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def list_document_tabs(
     document_id: Annotated[str, "The ID of the Google Document"],
     include_content: Annotated[
@@ -118,7 +113,7 @@ def insert_text(
     return documents.insert_text(document_id, text_to_insert, index, tab_id)
 
 
-@mcp.tool()
+@mcp.tool(annotations={"destructiveHint": True})
 def delete_range(
     document_id: Annotated[str, "The ID of the Google Document"],
     start_index: Annotated[int, "Starting index of the range (inclusive, 1-based)"],
@@ -311,7 +306,7 @@ def insert_image_from_url(
 # === COMMENT TOOLS ===
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def list_comments(
     document_id: Annotated[str, "The ID of the Google Document"],
 ) -> str:
@@ -321,7 +316,7 @@ def list_comments(
     return comments.list_comments(document_id)
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def get_comment(
     document_id: Annotated[str, "The ID of the Google Document"],
     comment_id: Annotated[str, "The ID of the comment to retrieve"],
@@ -374,7 +369,7 @@ def resolve_comment(
     return comments.resolve_comment(document_id, comment_id)
 
 
-@mcp.tool()
+@mcp.tool(annotations={"destructiveHint": True})
 def delete_comment(
     document_id: Annotated[str, "The ID of the Google Document"],
     comment_id: Annotated[str, "The ID of the comment to delete"],
@@ -388,7 +383,7 @@ def delete_comment(
 # === GOOGLE DRIVE TOOLS ===
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def list_google_docs(
     max_results: Annotated[int, "Maximum number of documents to return (1-100)"] = 20,
     query: Annotated[str | None, "Search query to filter documents by name or content"] = None,
@@ -402,7 +397,7 @@ def list_google_docs(
     return drive.list_google_docs(max_results, query, order_by)
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def search_google_docs(
     search_query: Annotated[str, "Search term to find in document names or content"],
     search_in: Annotated[
@@ -419,7 +414,7 @@ def search_google_docs(
     return drive.search_google_docs(search_query, search_in, max_results, modified_after)
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def get_recent_google_docs(
     max_results: Annotated[int, "Maximum number of recent documents to return (1-50)"] = 10,
     days_back: Annotated[
@@ -432,7 +427,7 @@ def get_recent_google_docs(
     return drive.get_recent_google_docs(max_results, days_back)
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def get_document_info(
     document_id: Annotated[str, "The ID of the Google Document"],
 ) -> str:
@@ -455,7 +450,7 @@ def create_folder(
     return drive.create_folder(name, parent_folder_id)
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def list_folder_contents(
     folder_id: Annotated[str, "ID of the folder to list ('root' for Drive root)"],
     include_subfolders: Annotated[bool, "Whether to include subfolders in results"] = True,
@@ -507,7 +502,7 @@ def upload_file_to_drive(
 
 def main() -> None:
     """Run the Google Docs MCP Server."""
-    _log("Starting Google Docs MCP Server...")
+    log("Starting Google Docs MCP Server...")
     mcp.run()
 
 
