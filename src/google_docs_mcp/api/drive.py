@@ -4,9 +4,12 @@ Google Drive operations for Google Docs MCP Server.
 Handles listing, searching, and managing files/folders in Drive.
 """
 
+import base64
 import sys
 from datetime import datetime, timedelta
 from typing import Any
+
+from googleapiclient.http import MediaInMemoryUpload
 
 from google_docs_mcp.auth import get_drive_client
 from google_docs_mcp.types import DocumentInfo, UserError
@@ -446,3 +449,145 @@ def list_folder_contents(
         if "403" in error_message:
             raise UserError("Permission denied. Make sure you have access to this folder.")
         raise UserError(f"Failed to list folder contents: {error_message}")
+
+
+def upload_image_to_drive(
+    image_data: str,
+    name: str,
+    mime_type: str,
+    parent_folder_id: str | None = None,
+) -> str:
+    """
+    Upload an image to Google Drive from base64-encoded data.
+
+    Args:
+        image_data: Base64-encoded image data
+        name: Name for the file in Drive
+        mime_type: MIME type of the image (e.g., 'image/png', 'image/jpeg')
+        parent_folder_id: Optional parent folder ID (None for root)
+
+    Returns:
+        Success message with file ID and link
+
+    Raises:
+        UserError: For permission or upload errors
+    """
+    drive = get_drive_client()
+    _log(f'Uploading image "{name}" (type: {mime_type}) to Drive')
+
+    try:
+        # Decode base64 data
+        binary_data = base64.b64decode(image_data)
+
+        # Prepare metadata
+        metadata: dict[str, Any] = {"name": name}
+        if parent_folder_id:
+            metadata["parents"] = [parent_folder_id]
+
+        # Create media upload
+        media = MediaInMemoryUpload(
+            binary_data,
+            mimetype=mime_type,
+            resumable=True
+        )
+
+        # Upload file
+        response = (
+            drive.files()
+            .create(
+                body=metadata,
+                media_body=media,
+                fields="id,name,webViewLink,mimeType,size"
+            )
+            .execute()
+        )
+
+        size_kb = int(response.get("size", 0)) / 1024
+
+        return (
+            f"Successfully uploaded image \"{response.get('name')}\" "
+            f"({size_kb:.1f} KB)\n"
+            f"ID: {response.get('id')}\n"
+            f"Type: {response.get('mimeType')}\n"
+            f"Link: {response.get('webViewLink')}"
+        )
+
+    except Exception as e:
+        error_message = str(e)
+        _log(f"Error uploading image: {error_message}")
+        if "404" in error_message:
+            raise UserError("Parent folder not found. Check the parent folder ID.")
+        if "403" in error_message:
+            raise UserError("Permission denied. Make sure you have write access to Drive.")
+        raise UserError(f"Failed to upload image: {error_message}")
+
+
+def upload_file_to_drive(
+    file_data: str,
+    name: str,
+    mime_type: str,
+    parent_folder_id: str | None = None,
+) -> str:
+    """
+    Upload a file to Google Drive from base64-encoded data.
+
+    Args:
+        file_data: Base64-encoded file data
+        name: Name for the file in Drive
+        mime_type: MIME type of the file
+        parent_folder_id: Optional parent folder ID (None for root)
+
+    Returns:
+        Success message with file ID and link
+
+    Raises:
+        UserError: For permission or upload errors
+    """
+    drive = get_drive_client()
+    _log(f'Uploading file "{name}" (type: {mime_type}) to Drive')
+
+    try:
+        # Decode base64 data
+        binary_data = base64.b64decode(file_data)
+
+        # Prepare metadata
+        metadata: dict[str, Any] = {"name": name}
+        if parent_folder_id:
+            metadata["parents"] = [parent_folder_id]
+
+        # Create media upload
+        media = MediaInMemoryUpload(
+            binary_data,
+            mimetype=mime_type,
+            resumable=True
+        )
+
+        # Upload file
+        response = (
+            drive.files()
+            .create(
+                body=metadata,
+                media_body=media,
+                fields="id,name,webViewLink,mimeType,size"
+            )
+            .execute()
+        )
+
+        size_kb = int(response.get("size", 0)) / 1024
+
+        return (
+            f"Successfully uploaded file \"{response.get('name')}\" "
+            f"({size_kb:.1f} KB)\n"
+            f"ID: {response.get('id')}\n"
+            f"Type: {response.get('mimeType')}\n"
+            f"Link: {response.get('webViewLink')}"
+        )
+
+    except Exception as e:
+        error_message = str(e)
+        _log(f"Error uploading file: {error_message}")
+        if "404" in error_message:
+            raise UserError("Parent folder not found. Check the parent folder ID.")
+        if "403" in error_message:
+            raise UserError("Permission denied. Make sure you have write access to Drive.")
+        raise UserError(f"Failed to upload file: {error_message}")

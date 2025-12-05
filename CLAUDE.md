@@ -179,6 +179,8 @@ def read_google_doc(
 - `get_document_info` - Get document metadata
 - `create_folder` - Create a Drive folder
 - `list_folder_contents` - List folder contents
+- `upload_image_to_drive` - Upload image to Drive from base64 data
+- `upload_file_to_drive` - Upload any file to Drive from base64 data
 
 ## Development Notes
 

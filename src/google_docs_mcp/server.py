@@ -469,6 +469,42 @@ def list_folder_contents(
     )
 
 
+@mcp.tool()
+def upload_image_to_drive(
+    image_data: Annotated[str, "Base64-encoded image data"],
+    name: Annotated[str, "Name for the image file in Drive (e.g., 'photo.png')"],
+    mime_type: Annotated[str, "MIME type of the image (e.g., 'image/png', 'image/jpeg', 'image/gif')"],
+    parent_folder_id: Annotated[
+        str | None, "Parent folder ID. If not provided, uploads to Drive root."
+    ] = None,
+) -> str:
+    """
+    Upload an image to Google Drive from base64-encoded data.
+
+    Accepts image data in base64 format and uploads it to Google Drive.
+    Returns the file ID and web link for the uploaded image.
+    """
+    return drive.upload_image_to_drive(image_data, name, mime_type, parent_folder_id)
+
+
+@mcp.tool()
+def upload_file_to_drive(
+    file_data: Annotated[str, "Base64-encoded file data"],
+    name: Annotated[str, "Name for the file in Drive"],
+    mime_type: Annotated[str, "MIME type of the file (e.g., 'application/pdf', 'text/plain')"],
+    parent_folder_id: Annotated[
+        str | None, "Parent folder ID. If not provided, uploads to Drive root."
+    ] = None,
+) -> str:
+    """
+    Upload a file to Google Drive from base64-encoded data.
+
+    Accepts file data in base64 format and uploads it to Google Drive.
+    Supports any file type. Returns the file ID and web link.
+    """
+    return drive.upload_file_to_drive(file_data, name, mime_type, parent_folder_id)
+
+
 def main() -> None:
     """Run the Google Docs MCP Server."""
     _log("Starting Google Docs MCP Server...")
