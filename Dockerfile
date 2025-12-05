@@ -63,9 +63,10 @@ RUN if [ "$CREATE_VSCODE_USER" = "true" ]; then \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
 
-# Install uv for vscode user if created
+# Install uv for vscode user if created and add to PATH
 RUN if [ "$CREATE_VSCODE_USER" = "true" ]; then \
-    su - vscode -c "curl -LsSf https://astral.sh/uv/install.sh | sh"; \
+    su - vscode -c "curl -LsSf https://astral.sh/uv/install.sh | sh" && \
+    echo 'export PATH="/home/vscode/.local/bin:$PATH"' >> /home/vscode/.bashrc; \
     fi
 
 # Set working directory (workspace will be mounted here for devcontainer)
