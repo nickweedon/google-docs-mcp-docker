@@ -358,6 +358,101 @@ def get_paragraph_range(
         raise Exception(f"Failed to find paragraph: {error_message}")
 
 
+def get_paragraph_range_from_document(
+    document: dict, index_within: int, tab_id: str | None = None
+) -> TextRange | None:
+    """
+    Find the paragraph boundaries containing a specific index using pre-fetched document data.
+
+    This is more efficient than get_paragraph_range() when you already have the document data,
+    as it avoids an additional API call.
+
+    Args:
+        document: The full document data dict (from docs.documents().get())
+        index_within: An index within the target paragraph
+        tab_id: Optional tab ID to search within (uses first tab if not specified)
+
+    Returns:
+        TextRange with paragraph start and end indices, or None if not found
+    """
+    log(f"Finding paragraph containing index {index_within} in document data")
+
+    # Get the body content - handle both tab-based and direct body structure
+    body = None
+    tabs = document.get("tabs", [])
+
+    if tabs:
+        # Document has tabs structure
+        if tab_id:
+            # Find the specific tab
+            for tab in tabs:
+                tab_props = tab.get("tabProperties", {})
+                if tab_props.get("tabId") == tab_id:
+                    body = tab.get("documentTab", {}).get("body", {})
+                    break
+        if not body and tabs:
+            # Use first tab
+            body = tabs[0].get("documentTab", {}).get("body", {})
+    else:
+        # Legacy document structure without tabs
+        body = document.get("body", {})
+
+    if not body:
+        log("No body content found in document data")
+        return None
+
+    content = body.get("content", [])
+
+    if not content:
+        log("No content found in document body")
+        return None
+
+    def find_paragraph_in_content(content_list: list) -> TextRange | None:
+        for element in content_list:
+            start_idx = element.get("startIndex")
+            end_idx = element.get("endIndex")
+
+            if start_idx is not None and end_idx is not None:
+                if index_within >= start_idx and index_within < end_idx:
+                    # If it's a paragraph, we've found our target
+                    # Use "in" check because element.get("paragraph") returns {}
+                    # which is falsy even when the key exists
+                    if "paragraph" in element:
+                        log(
+                            f"Found paragraph containing index {index_within}, "
+                            f"range: {start_idx}-{end_idx}"
+                        )
+                        return TextRange(start_index=start_idx, end_index=end_idx)
+
+                    # If it's a table, search cells recursively
+                    if "table" in element:
+                        table = element["table"]
+                        if table.get("tableRows"):
+                            log(f"Index {index_within} is within a table, searching cells...")
+                            for row in table["tableRows"]:
+                                for cell in row.get("tableCells", []):
+                                    if cell.get("content"):
+                                        result = find_paragraph_in_content(cell["content"])
+                                        if result:
+                                            return result
+
+                    log(
+                        f"Index {index_within} is within element "
+                        f"({start_idx}-{end_idx}) but not in a paragraph"
+                    )
+
+        return None
+
+    result = find_paragraph_in_content(content)
+
+    if not result:
+        log(f"Could not find paragraph containing index {index_within}")
+    else:
+        log(f"Returning paragraph range: {result.start_index}-{result.end_index}")
+
+    return result
+
+
 # --- Style Request Builders ---
 def build_update_text_style_request(
     start_index: int, end_index: int, style: TextStyleArgs

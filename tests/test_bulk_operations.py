@@ -14,6 +14,8 @@ from google_docs_mcp.api.documents import (
     _prepare_insert_table_request,
     _prepare_insert_page_break_request,
     _prepare_insert_image_request,
+    _prepare_apply_text_style_request,
+    _prepare_apply_paragraph_style_request,
 )
 from google_docs_mcp.api.helpers import chunk_requests
 from fastmcp.exceptions import ToolError

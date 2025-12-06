@@ -948,7 +948,7 @@ def bulk_update_document(
             log(f"Fetching document {document_id} for text-finding operations")
             document = (
                 docs.documents()
-                .get(documentId=document_id, fields="body,tabs")
+                .get(documentId=document_id, includeTabsContent=True, fields="*")
                 .execute()
             )
 
@@ -1127,9 +1127,15 @@ def _prepare_apply_text_style_request(
 
     tab_id = op_dict.get("tab_id", default_tab_id)
     result = helpers.build_update_text_style_request(
-        start_index, end_index, style_args, tab_id
+        start_index, end_index, style_args
     )
-    return result["request"]
+    request = result["request"]
+
+    # Add tab_id to the range if specified
+    if tab_id:
+        request["updateTextStyle"]["range"]["tabId"] = tab_id
+
+    return request
 
 
 def _prepare_apply_paragraph_style_request(
@@ -1157,7 +1163,10 @@ def _prepare_apply_paragraph_style_request(
             )
 
         # Find paragraph containing the text
-        para_range = helpers.get_paragraph_range(document, text_range.start_index)
+        tab_id = op_dict.get("tab_id", default_tab_id)
+        para_range = helpers.get_paragraph_range_from_document(
+            document, text_range.start_index, tab_id
+        )
         if not para_range:
             raise ToolError(
                 f"Could not find paragraph containing text '{text_to_find}'"
@@ -1170,7 +1179,10 @@ def _prepare_apply_paragraph_style_request(
         if not document:
             raise ToolError("Document data required for index_within_paragraph operations")
 
-        para_range = helpers.get_paragraph_range(document, index_within_paragraph)
+        tab_id = op_dict.get("tab_id", default_tab_id)
+        para_range = helpers.get_paragraph_range_from_document(
+            document, index_within_paragraph, tab_id
+        )
         if not para_range:
             raise ToolError(
                 f"Could not find paragraph containing index {index_within_paragraph}"
@@ -1197,9 +1209,15 @@ def _prepare_apply_paragraph_style_request(
 
     tab_id = op_dict.get("tab_id", default_tab_id)
     result = helpers.build_update_paragraph_style_request(
-        start_index, end_index, style_args, tab_id
+        start_index, end_index, style_args
     )
-    return result["request"]
+    request = result["request"]
+
+    # Add tab_id to the range if specified
+    if tab_id:
+        request["updateParagraphStyle"]["range"]["tabId"] = tab_id
+
+    return request
 
 
 def _prepare_insert_table_request(op_dict: dict) -> dict:

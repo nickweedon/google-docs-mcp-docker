@@ -7,7 +7,7 @@ Ported from tests/helpers.test.js
 import pytest
 from unittest.mock import MagicMock, patch
 
-from google_docs_mcp.api.helpers import find_text_range
+from google_docs_mcp.api.helpers import find_text_range, get_paragraph_range_from_document
 from google_docs_mcp.types import TextRange
 
 
@@ -261,3 +261,224 @@ class TestBuildUpdateParagraphStyleRequest:
         result = build_update_paragraph_style_request(1, 10, style)
 
         assert result is None
+
+
+class TestGetParagraphRangeFromDocument:
+    """Tests for get_paragraph_range_from_document function."""
+
+    def test_find_paragraph_in_body_content(self):
+        """Should find paragraph containing an index in body content."""
+        document = {
+            "body": {
+                "content": [
+                    {"startIndex": 0, "endIndex": 1},  # Section break
+                    {
+                        "startIndex": 1,
+                        "endIndex": 55,
+                        "paragraph": {
+                            "elements": [
+                                {"textRun": {"content": "First paragraph content here."}}
+                            ]
+                        }
+                    },
+                    {
+                        "startIndex": 55,
+                        "endIndex": 100,
+                        "paragraph": {
+                            "elements": [
+                                {"textRun": {"content": "Second paragraph content."}}
+                            ]
+                        }
+                    }
+                ]
+            }
+        }
+
+        result = get_paragraph_range_from_document(document, 10)
+
+        assert result is not None
+        assert result.start_index == 1
+        assert result.end_index == 55
+
+    def test_find_paragraph_in_tabs_structure(self):
+        """Should find paragraph in document with tabs structure."""
+        document = {
+            "tabs": [
+                {
+                    "tabProperties": {"tabId": "t.0"},
+                    "documentTab": {
+                        "body": {
+                            "content": [
+                                {"startIndex": 0, "endIndex": 1},
+                                {
+                                    "startIndex": 1,
+                                    "endIndex": 55,
+                                    "paragraph": {
+                                        "elements": [
+                                            {"textRun": {"content": "Tab content here."}}
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+
+        result = get_paragraph_range_from_document(document, 25)
+
+        assert result is not None
+        assert result.start_index == 1
+        assert result.end_index == 55
+
+    def test_find_paragraph_in_specific_tab(self):
+        """Should find paragraph in a specific tab when tab_id is provided."""
+        document = {
+            "tabs": [
+                {
+                    "tabProperties": {"tabId": "t.0"},
+                    "documentTab": {
+                        "body": {
+                            "content": [
+                                {"startIndex": 0, "endIndex": 1},
+                                {
+                                    "startIndex": 1,
+                                    "endIndex": 30,
+                                    "paragraph": {}
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "tabProperties": {"tabId": "t.1"},
+                    "documentTab": {
+                        "body": {
+                            "content": [
+                                {"startIndex": 0, "endIndex": 1},
+                                {
+                                    "startIndex": 1,
+                                    "endIndex": 100,
+                                    "paragraph": {}
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+
+        result = get_paragraph_range_from_document(document, 50, tab_id="t.1")
+
+        assert result is not None
+        assert result.start_index == 1
+        assert result.end_index == 100
+
+    def test_return_none_for_index_outside_paragraphs(self):
+        """Should return None when index is not within any paragraph."""
+        document = {
+            "body": {
+                "content": [
+                    {"startIndex": 0, "endIndex": 1},  # Section break
+                    {
+                        "startIndex": 1,
+                        "endIndex": 55,
+                        "paragraph": {}
+                    }
+                ]
+            }
+        }
+
+        # Index 500 is way beyond any content
+        result = get_paragraph_range_from_document(document, 500)
+
+        assert result is None
+
+    def test_return_none_for_empty_document(self):
+        """Should return None for document with no content."""
+        document = {"body": {"content": []}}
+
+        result = get_paragraph_range_from_document(document, 10)
+
+        assert result is None
+
+    def test_return_none_for_document_without_body(self):
+        """Should return None for document without body."""
+        document = {}
+
+        result = get_paragraph_range_from_document(document, 10)
+
+        assert result is None
+
+    def test_find_paragraph_in_table_cell(self):
+        """Should find paragraph inside a table cell."""
+        document = {
+            "body": {
+                "content": [
+                    {"startIndex": 0, "endIndex": 1},
+                    {
+                        "startIndex": 1,
+                        "endIndex": 200,
+                        "table": {
+                            "tableRows": [
+                                {
+                                    "tableCells": [
+                                        {
+                                            "content": [
+                                                {
+                                                    "startIndex": 5,
+                                                    "endIndex": 50,
+                                                    "paragraph": {
+                                                        "elements": [
+                                                            {"textRun": {"content": "Cell content"}}
+                                                        ]
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        }
+
+        result = get_paragraph_range_from_document(document, 25)
+
+        assert result is not None
+        assert result.start_index == 5
+        assert result.end_index == 50
+
+    def test_handles_non_paragraph_elements(self):
+        """Should skip non-paragraph elements like section breaks."""
+        document = {
+            "body": {
+                "content": [
+                    {
+                        "startIndex": 0,
+                        "endIndex": 1,
+                        "sectionBreak": {}  # Not a paragraph
+                    },
+                    {
+                        "startIndex": 1,
+                        "endIndex": 55,
+                        "paragraph": {}
+                    }
+                ]
+            }
+        }
+
+        # Index 0 is within section break, not a paragraph
+        result = get_paragraph_range_from_document(document, 0)
+
+        assert result is None
+
+        # Index 10 is within the paragraph
+        result = get_paragraph_range_from_document(document, 10)
+
+        assert result is not None
+        assert result.start_index == 1
+        assert result.end_index == 55
