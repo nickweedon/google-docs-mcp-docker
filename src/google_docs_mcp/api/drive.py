@@ -40,19 +40,23 @@ def list_google_docs(
 
     try:
         query_string = "mimeType='application/vnd.google-apps.document' and trashed=false"
+        uses_fulltext = False
+
         if query:
             query_string += f" and (name contains '{query}' or fullText contains '{query}')"
+            uses_fulltext = True
 
-        response = (
-            drive.files()
-            .list(
-                q=query_string,
-                pageSize=max_results,
-                orderBy=order_by,
-                fields="files(id,name,modifiedTime,createdTime,size,webViewLink,owners(displayName,emailAddress))",
-            )
-            .execute()
-        )
+        # Build list parameters - orderBy is not allowed with fullText queries
+        list_params = {
+            "q": query_string,
+            "pageSize": max_results,
+            "fields": "files(id,name,modifiedTime,createdTime,size,webViewLink,owners(displayName,emailAddress))",
+        }
+
+        if not uses_fulltext:
+            list_params["orderBy"] = order_by
+
+        response = drive.files().list(**list_params).execute()
 
         files = response.get("files", [])
 
@@ -111,27 +115,31 @@ def search_google_docs(
 
     try:
         query_string = "mimeType='application/vnd.google-apps.document' and trashed=false"
+        uses_fulltext = False
 
         if search_in == "name":
             query_string += f" and name contains '{search_query}'"
         elif search_in == "content":
             query_string += f" and fullText contains '{search_query}'"
+            uses_fulltext = True
         else:  # both
             query_string += f" and (name contains '{search_query}' or fullText contains '{search_query}')"
+            uses_fulltext = True
 
         if modified_after:
             query_string += f" and modifiedTime > '{modified_after}'"
 
-        response = (
-            drive.files()
-            .list(
-                q=query_string,
-                pageSize=max_results,
-                orderBy="modifiedTime desc",
-                fields="files(id,name,modifiedTime,createdTime,webViewLink,owners(displayName),parents)",
-            )
-            .execute()
-        )
+        # Build list parameters - orderBy is not allowed with fullText queries
+        list_params = {
+            "q": query_string,
+            "pageSize": max_results,
+            "fields": "files(id,name,modifiedTime,createdTime,webViewLink,owners(displayName),parents)",
+        }
+
+        if not uses_fulltext:
+            list_params["orderBy"] = "modifiedTime desc"
+
+        response = drive.files().list(**list_params).execute()
 
         files = response.get("files", [])
 
