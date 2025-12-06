@@ -757,3 +757,20 @@ def find_paragraphs_matching_style(
     raise NotImplementedError(
         "Finding paragraphs by style criteria is not yet implemented."
     )
+
+
+# --- Bulk Operations Helpers ---
+def chunk_requests(requests: list[dict], chunk_size: int = 50) -> list[list[dict]]:
+    """
+    Split requests into chunks of specified size.
+
+    Args:
+        requests: List of request dictionaries
+        chunk_size: Maximum number of requests per chunk (default: 50)
+
+    Returns:
+        List of request chunks
+    """
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    return [requests[i : i + chunk_size] for i in range(0, len(requests), chunk_size)]

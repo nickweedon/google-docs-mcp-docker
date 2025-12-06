@@ -100,6 +100,114 @@ class TabInfo:
     text_length: int | None = None
 
 
+# --- Bulk Operation Types ---
+@dataclass
+class InsertTextOperation:
+    """Operation to insert text at a specific index."""
+
+    type: str = field(default="insert_text", init=False)
+    text: str = ""
+    index: int = 1
+    tab_id: str | None = None
+
+
+@dataclass
+class DeleteRangeOperation:
+    """Operation to delete a range of content."""
+
+    type: str = field(default="delete_range", init=False)
+    start_index: int = 1
+    end_index: int = 1
+    tab_id: str | None = None
+
+
+@dataclass
+class ApplyTextStyleOperation:
+    """Operation to apply character-level text styling."""
+
+    type: str = field(default="apply_text_style", init=False)
+    # Range-based targeting
+    start_index: int | None = None
+    end_index: int | None = None
+    # Text-based targeting
+    text_to_find: str | None = None
+    match_instance: int | None = None
+    # Style properties (from TextStyleArgs)
+    bold: bool | None = None
+    italic: bool | None = None
+    underline: bool | None = None
+    strikethrough: bool | None = None
+    font_size: float | None = None
+    font_family: str | None = None
+    foreground_color: str | None = None
+    background_color: str | None = None
+    link_url: str | None = None
+
+
+@dataclass
+class ApplyParagraphStyleOperation:
+    """Operation to apply paragraph-level styling."""
+
+    type: str = field(default="apply_paragraph_style", init=False)
+    # Range-based targeting
+    start_index: int | None = None
+    end_index: int | None = None
+    # Text-based targeting
+    text_to_find: str | None = None
+    match_instance: int | None = None
+    # Index-based targeting
+    index_within_paragraph: int | None = None
+    # Style properties (from ParagraphStyleArgs)
+    alignment: str | None = None
+    indent_start: float | None = None
+    indent_end: float | None = None
+    space_above: float | None = None
+    space_below: float | None = None
+    named_style_type: str | None = None
+    keep_with_next: bool | None = None
+
+
+@dataclass
+class InsertTableOperation:
+    """Operation to insert a table."""
+
+    type: str = field(default="insert_table", init=False)
+    rows: int = 1
+    columns: int = 1
+    index: int = 1
+
+
+@dataclass
+class InsertPageBreakOperation:
+    """Operation to insert a page break."""
+
+    type: str = field(default="insert_page_break", init=False)
+    index: int = 1
+
+
+@dataclass
+class InsertImageOperation:
+    """Operation to insert an image from a URL."""
+
+    type: str = field(default="insert_image_from_url", init=False)
+    image_url: str = ""
+    index: int = 1
+    width: float | None = None
+    height: float | None = None
+
+
+# Union type for all bulk operations
+BulkOperation = (
+    InsertTextOperation
+    | DeleteRangeOperation
+    | ApplyTextStyleOperation
+    | ApplyParagraphStyleOperation
+    | InsertTableOperation
+    | InsertPageBreakOperation
+    | InsertImageOperation
+)
+
+
 # --- Custom Exceptions ---
 class NotImplementedError(Exception):
     """Raised when a feature is not yet implemented."""

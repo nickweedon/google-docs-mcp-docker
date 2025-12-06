@@ -304,6 +304,72 @@ def insert_image_from_url(
     return documents.insert_image_from_url(document_id, image_url, index, width, height)
 
 
+@mcp.tool()
+def bulk_update_google_doc(
+    document_id: Annotated[str, "The ID of the Google Document to update"],
+    operations: Annotated[
+        list[dict],
+        """List of operations to perform. Each operation is a dictionary with a 'type' field and operation-specific parameters.
+
+Supported operation types:
+
+1. insert_text: Insert text at a specific index
+   - text: Text to insert (string)
+   - index: Position to insert at (1-based integer)
+   - tab_id: Optional tab ID (string)
+
+2. delete_range: Delete a range of content
+   - start_index: Start of range (1-based, inclusive)
+   - end_index: End of range (1-based, exclusive)
+   - tab_id: Optional tab ID (string)
+
+3. apply_text_style: Apply character-level formatting
+   - Either (start_index, end_index) OR (text_to_find, match_instance)
+   - Style properties: bold, italic, underline, strikethrough, font_size, font_family, foreground_color, background_color, link_url
+
+4. apply_paragraph_style: Apply paragraph-level formatting
+   - Either (start_index, end_index) OR (text_to_find, match_instance) OR index_within_paragraph
+   - Style properties: alignment, indent_start, indent_end, space_above, space_below, named_style_type, keep_with_next
+
+5. insert_table: Insert a table
+   - rows: Number of rows (integer)
+   - columns: Number of columns (integer)
+   - index: Position to insert (1-based integer)
+
+6. insert_page_break: Insert a page break
+   - index: Position to insert (1-based integer)
+
+7. insert_image_from_url: Insert an image from a URL
+   - image_url: URL to the image (string)
+   - index: Position to insert (1-based integer)
+   - width: Optional width in points (float)
+   - height: Optional height in points (float)
+
+Example:
+[
+  {"type": "insert_text", "text": "# Title\\n\\n", "index": 1},
+  {"type": "apply_paragraph_style", "start_index": 1, "end_index": 8, "named_style_type": "HEADING_1"},
+  {"type": "insert_text", "text": "Introduction text.\\n", "index": 8},
+  {"type": "insert_table", "rows": 3, "columns": 2, "index": 27}
+]
+        """,
+    ],
+    tab_id: Annotated[
+        str | None, "Optional default tab ID for operations without explicit tab_id"
+    ] = None,
+) -> str:
+    """
+    Execute multiple document operations in a single batched API call for improved performance.
+
+    This tool allows you to perform many operations at once instead of making separate tool calls.
+    Operations are batched into groups of up to 50 requests (Google Docs API limit) and executed
+    sequentially. This significantly reduces latency when making complex document changes.
+
+    Performance: 5-10x faster than individual tool calls for multi-operation workflows.
+    """
+    return documents.bulk_update_document(document_id, operations, tab_id)
+
+
 # === COMMENT TOOLS ===
 
 

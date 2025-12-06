@@ -904,3 +904,357 @@ def insert_image_from_url(
         error_message = str(e)
         log(f"Error inserting image in doc {document_id}: {error_message}")
         raise ToolError(f"Failed to insert image: {error_message}")
+
+
+def bulk_update_document(
+    document_id: str, operations: list[dict], default_tab_id: str | None = None
+) -> str:
+    """
+    Execute multiple document operations in batched API calls.
+
+    Args:
+        document_id: Target document ID
+        operations: List of operation dictionaries with 'type' field
+        default_tab_id: Optional default tab for operations without explicit tab_id
+
+    Returns:
+        Human-readable summary of operations performed
+
+    Raises:
+        ToolError: If operations are invalid or execution fails
+    """
+    docs = get_docs_client()
+    log(
+        f"Processing bulk update with {len(operations)} operations for doc {document_id}"
+    )
+
+    if not operations:
+        return "No operations to execute."
+
+    if len(operations) > 500:
+        raise ToolError(
+            f"Too many operations ({len(operations)}). Maximum is 500 operations per call."
+        )
+
+    try:
+        # Step 1: Determine if we need to fetch the document for text-finding operations
+        needs_document = any(
+            op.get("text_to_find") or op.get("index_within_paragraph")
+            for op in operations
+        )
+
+        document = None
+        if needs_document:
+            log(f"Fetching document {document_id} for text-finding operations")
+            document = (
+                docs.documents()
+                .get(documentId=document_id, fields="body,tabs")
+                .execute()
+            )
+
+        # Step 2: Parse and validate operations, preparing requests
+        requests = []
+        operation_summaries = []
+
+        for i, op_dict in enumerate(operations):
+            op_type = op_dict.get("type")
+            if not op_type:
+                raise ToolError(f"Operation {i + 1} missing 'type' field")
+
+            try:
+                if op_type == "insert_text":
+                    request = _prepare_insert_text_request(op_dict, default_tab_id)
+                    requests.append(request)
+                    operation_summaries.append(f"insert_text at index {op_dict.get('index', 1)}")
+
+                elif op_type == "delete_range":
+                    request = _prepare_delete_range_request(op_dict, default_tab_id)
+                    requests.append(request)
+                    operation_summaries.append(
+                        f"delete_range {op_dict.get('start_index')}-{op_dict.get('end_index')}"
+                    )
+
+                elif op_type == "apply_text_style":
+                    request = _prepare_apply_text_style_request(
+                        op_dict, document, default_tab_id
+                    )
+                    requests.append(request)
+                    operation_summaries.append("apply_text_style")
+
+                elif op_type == "apply_paragraph_style":
+                    request = _prepare_apply_paragraph_style_request(
+                        op_dict, document, default_tab_id
+                    )
+                    requests.append(request)
+                    operation_summaries.append("apply_paragraph_style")
+
+                elif op_type == "insert_table":
+                    request = _prepare_insert_table_request(op_dict)
+                    requests.append(request)
+                    operation_summaries.append(
+                        f"insert_table {op_dict.get('rows')}x{op_dict.get('columns')}"
+                    )
+
+                elif op_type == "insert_page_break":
+                    request = _prepare_insert_page_break_request(op_dict)
+                    requests.append(request)
+                    operation_summaries.append(f"insert_page_break at index {op_dict.get('index')}")
+
+                elif op_type == "insert_image_from_url":
+                    request = _prepare_insert_image_request(op_dict)
+                    requests.append(request)
+                    operation_summaries.append(f"insert_image at index {op_dict.get('index')}")
+
+                else:
+                    raise ToolError(
+                        f"Unknown operation type '{op_type}' in operation {i + 1}"
+                    )
+
+            except Exception as e:
+                raise ToolError(f"Error preparing operation {i + 1} ({op_type}): {str(e)}")
+
+        # Step 3: Chunk requests into batches of 50
+        request_chunks = helpers.chunk_requests(requests, chunk_size=50)
+        log(
+            f"Executing {len(requests)} requests in {len(request_chunks)} batch(es)"
+        )
+
+        # Step 4: Execute batches sequentially
+        for chunk_idx, chunk in enumerate(request_chunks):
+            log(f"Executing batch {chunk_idx + 1}/{len(request_chunks)} with {len(chunk)} requests")
+            helpers.execute_batch_update_sync(docs, document_id, chunk)
+
+        # Step 5: Return summary
+        summary_lines = [
+            f"✓ Successfully executed {len(operations)} operations in {len(request_chunks)} batch(es):",
+            "",
+        ]
+
+        # Group operation summaries by type
+        operation_counts: dict[str, int] = {}
+        for summary in operation_summaries:
+            op_type = summary.split()[0]
+            operation_counts[op_type] = operation_counts.get(op_type, 0) + 1
+
+        for op_type, count in sorted(operation_counts.items()):
+            summary_lines.append(f"  - {count}× {op_type}")
+
+        return "\n".join(summary_lines)
+
+    except ToolError:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error in bulk update for doc {document_id}: {error_message}")
+        raise ToolError(f"Bulk update failed: {error_message}")
+
+
+# --- Helper functions for preparing bulk operation requests ---
+
+
+def _prepare_insert_text_request(op_dict: dict, default_tab_id: str | None) -> dict:
+    """Prepare insertText request from operation dict."""
+    text = op_dict.get("text", "")
+    index = op_dict.get("index", 1)
+    tab_id = op_dict.get("tab_id", default_tab_id)
+
+    location: dict[str, Any] = {"index": index}
+    if tab_id:
+        location["tabId"] = tab_id
+
+    return {"insertText": {"text": text, "location": location}}
+
+
+def _prepare_delete_range_request(op_dict: dict, default_tab_id: str | None) -> dict:
+    """Prepare deleteContentRange request from operation dict."""
+    start_index = op_dict.get("start_index", 1)
+    end_index = op_dict.get("end_index", 1)
+    tab_id = op_dict.get("tab_id", default_tab_id)
+
+    if end_index <= start_index:
+        raise ToolError(
+            f"Invalid range: end_index ({end_index}) must be greater than start_index ({start_index})"
+        )
+
+    range_obj: dict[str, Any] = {"startIndex": start_index, "endIndex": end_index}
+    if tab_id:
+        range_obj["tabId"] = tab_id
+
+    return {"deleteContentRange": {"range": range_obj}}
+
+
+def _prepare_apply_text_style_request(
+    op_dict: dict, document: dict | None, default_tab_id: str | None
+) -> dict:
+    """Prepare updateTextStyle request from operation dict."""
+    # Determine the range to apply styling to
+    start_index = op_dict.get("start_index")
+    end_index = op_dict.get("end_index")
+    text_to_find = op_dict.get("text_to_find")
+    match_instance = op_dict.get("match_instance", 1)
+
+    if text_to_find:
+        # Text-based targeting - find the text first
+        if not document:
+            raise ToolError("Document data required for text-finding operations")
+
+        text_range = helpers.find_text_range(
+            get_docs_client(), document["documentId"], text_to_find, match_instance
+        )
+        if not text_range:
+            raise ToolError(
+                f"Text '{text_to_find}' (instance {match_instance}) not found in document"
+            )
+        start_index = text_range.start_index
+        end_index = text_range.end_index
+    elif start_index is None or end_index is None:
+        raise ToolError(
+            "Either (start_index, end_index) or text_to_find must be provided for apply_text_style"
+        )
+
+    # Build text style args from operation dict
+    style_args = TextStyleArgs(
+        bold=op_dict.get("bold"),
+        italic=op_dict.get("italic"),
+        underline=op_dict.get("underline"),
+        strikethrough=op_dict.get("strikethrough"),
+        font_size=op_dict.get("font_size"),
+        font_family=op_dict.get("font_family"),
+        foreground_color=op_dict.get("foreground_color"),
+        background_color=op_dict.get("background_color"),
+        link_url=op_dict.get("link_url"),
+    )
+
+    tab_id = op_dict.get("tab_id", default_tab_id)
+    result = helpers.build_update_text_style_request(
+        start_index, end_index, style_args, tab_id
+    )
+    return result["request"]
+
+
+def _prepare_apply_paragraph_style_request(
+    op_dict: dict, document: dict | None, default_tab_id: str | None
+) -> dict:
+    """Prepare updateParagraphStyle request from operation dict."""
+    # Determine the range to apply styling to
+    start_index = op_dict.get("start_index")
+    end_index = op_dict.get("end_index")
+    text_to_find = op_dict.get("text_to_find")
+    match_instance = op_dict.get("match_instance", 1)
+    index_within_paragraph = op_dict.get("index_within_paragraph")
+
+    if text_to_find:
+        # Text-based targeting
+        if not document:
+            raise ToolError("Document data required for text-finding operations")
+
+        text_range = helpers.find_text_range(
+            get_docs_client(), document["documentId"], text_to_find, match_instance
+        )
+        if not text_range:
+            raise ToolError(
+                f"Text '{text_to_find}' (instance {match_instance}) not found in document"
+            )
+
+        # Find paragraph containing the text
+        para_range = helpers.get_paragraph_range(document, text_range.start_index)
+        if not para_range:
+            raise ToolError(
+                f"Could not find paragraph containing text '{text_to_find}'"
+            )
+        start_index = para_range.start_index
+        end_index = para_range.end_index
+
+    elif index_within_paragraph is not None:
+        # Index-based targeting
+        if not document:
+            raise ToolError("Document data required for index_within_paragraph operations")
+
+        para_range = helpers.get_paragraph_range(document, index_within_paragraph)
+        if not para_range:
+            raise ToolError(
+                f"Could not find paragraph containing index {index_within_paragraph}"
+            )
+        start_index = para_range.start_index
+        end_index = para_range.end_index
+
+    elif start_index is None or end_index is None:
+        raise ToolError(
+            "Either (start_index, end_index), text_to_find, or index_within_paragraph "
+            "must be provided for apply_paragraph_style"
+        )
+
+    # Build paragraph style args from operation dict
+    style_args = ParagraphStyleArgs(
+        alignment=op_dict.get("alignment"),
+        indent_start=op_dict.get("indent_start"),
+        indent_end=op_dict.get("indent_end"),
+        space_above=op_dict.get("space_above"),
+        space_below=op_dict.get("space_below"),
+        named_style_type=op_dict.get("named_style_type"),
+        keep_with_next=op_dict.get("keep_with_next"),
+    )
+
+    tab_id = op_dict.get("tab_id", default_tab_id)
+    result = helpers.build_update_paragraph_style_request(
+        start_index, end_index, style_args, tab_id
+    )
+    return result["request"]
+
+
+def _prepare_insert_table_request(op_dict: dict) -> dict:
+    """Prepare insertTable request from operation dict."""
+    rows = op_dict.get("rows", 1)
+    columns = op_dict.get("columns", 1)
+    index = op_dict.get("index", 1)
+
+    if rows < 1 or columns < 1:
+        raise ToolError(f"Table must have at least 1 row and 1 column (got {rows}x{columns})")
+
+    return {
+        "insertTable": {
+            "rows": rows,
+            "columns": columns,
+            "location": {"index": index},
+        }
+    }
+
+
+def _prepare_insert_page_break_request(op_dict: dict) -> dict:
+    """Prepare insertPageBreak request from operation dict."""
+    index = op_dict.get("index", 1)
+    return {"insertPageBreak": {"location": {"index": index}}}
+
+
+def _prepare_insert_image_request(op_dict: dict) -> dict:
+    """Prepare insertInlineImage request from operation dict."""
+    image_url = op_dict.get("image_url", "")
+    index = op_dict.get("index", 1)
+    width = op_dict.get("width")
+    height = op_dict.get("height")
+
+    if not image_url:
+        raise ToolError("image_url is required for insert_image_from_url operation")
+
+    # Validate URL format
+    if not image_url.startswith(("http://", "https://")):
+        raise ToolError(f"Invalid image URL: {image_url}. Must start with http:// or https://")
+
+    location = {"index": index}
+    uri = image_url
+
+    object_size = None
+    if width is not None and height is not None:
+        object_size = {
+            "height": {"magnitude": height, "unit": "PT"},
+            "width": {"magnitude": width, "unit": "PT"},
+        }
+
+    request: dict[str, Any] = {
+        "insertInlineImage": {"uri": uri, "location": location}
+    }
+
+    if object_size:
+        request["insertInlineImage"]["objectSize"] = object_size
+
+    return request

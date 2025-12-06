@@ -22,6 +22,7 @@ This server provides Model Context Protocol (MCP) tools for interacting with Goo
 - **Format text** - Apply character and paragraph styles (bold, italic, colors, fonts, alignment, etc.)
 - **Manage structure** - Insert tables, page breaks, and images
 - **Handle tabs** - List and work with multi-tab documents
+- **Bulk operations** - Execute multiple document operations in a single batched API call for 5-10x faster performance
 
 ### Comments
 - List, add, reply to, resolve, and delete comments on documents
@@ -267,6 +268,165 @@ uv run pytest
 | `docker-compose down` | Stop the server |
 | `docker-compose logs -f` | View server logs |
 | `docker-compose --profile auth run --rm auth` | Run auth service interactively |
+
+## Bulk Operations
+
+The `bulk_update_google_doc` tool allows you to execute multiple document operations in a single batched API call, providing **5-10x performance improvement** over individual tool calls.
+
+### Why Use Bulk Operations?
+
+When making multiple changes to a document (formatting, inserting content, adding tables, etc.), each individual tool call requires a separate network round-trip to Google's API. This creates significant latency:
+
+**Before (individual calls):**
+- 10 formatting operations = 10 API calls = ~5-10 seconds
+
+**After (bulk operations):**
+- 10 formatting operations = 1 batched API call = ~0.5-1 second
+
+### Supported Operations
+
+The bulk tool supports all document manipulation operations:
+
+1. **insert_text** - Insert text at a specific index
+2. **delete_range** - Delete content in a range
+3. **apply_text_style** - Apply character-level formatting (bold, italic, colors, etc.)
+4. **apply_paragraph_style** - Apply paragraph-level formatting (alignment, headings, spacing, etc.)
+5. **insert_table** - Insert a table
+6. **insert_page_break** - Insert a page break
+7. **insert_image_from_url** - Insert an image from a URL
+
+### Example Usage
+
+Here's an example of creating a formatted document with a title, introduction, table, and styled text in a single API call:
+
+```json
+{
+  "document_id": "your-document-id-here",
+  "operations": [
+    {
+      "type": "insert_text",
+      "text": "Project Status Report\n\n",
+      "index": 1
+    },
+    {
+      "type": "apply_paragraph_style",
+      "start_index": 1,
+      "end_index": 23,
+      "named_style_type": "HEADING_1",
+      "alignment": "CENTER"
+    },
+    {
+      "type": "insert_text",
+      "text": "Executive Summary\n\n",
+      "index": 23
+    },
+    {
+      "type": "apply_paragraph_style",
+      "start_index": 23,
+      "end_index": 42,
+      "named_style_type": "HEADING_2"
+    },
+    {
+      "type": "insert_text",
+      "text": "This report provides an overview of project progress and key metrics.\n\n",
+      "index": 42
+    },
+    {
+      "type": "insert_text",
+      "text": "Key Metrics\n\n",
+      "index": 113
+    },
+    {
+      "type": "apply_paragraph_style",
+      "start_index": 113,
+      "end_index": 126,
+      "named_style_type": "HEADING_2"
+    },
+    {
+      "type": "insert_table",
+      "rows": 4,
+      "columns": 3,
+      "index": 126
+    },
+    {
+      "type": "insert_text",
+      "text": "\n\nConclusion\n",
+      "index": 127
+    },
+    {
+      "type": "apply_text_style",
+      "text_to_find": "Conclusion",
+      "match_instance": 1,
+      "bold": true,
+      "font_size": 14
+    }
+  ]
+}
+```
+
+### Operation Parameters
+
+Each operation is a dictionary with a `type` field and operation-specific parameters:
+
+#### insert_text
+- `text` (string): Text to insert
+- `index` (integer): Position to insert at (1-based)
+- `tab_id` (string, optional): Tab ID for multi-tab documents
+
+#### delete_range
+- `start_index` (integer): Start of range (1-based, inclusive)
+- `end_index` (integer): End of range (1-based, exclusive)
+- `tab_id` (string, optional): Tab ID
+
+#### apply_text_style
+Range targeting (choose one):
+- `start_index` and `end_index` (integers): Direct range specification
+- `text_to_find` (string) and `match_instance` (integer): Find specific text
+
+Style properties:
+- `bold`, `italic`, `underline`, `strikethrough` (boolean)
+- `font_size` (float): Font size in points
+- `font_family` (string): Font name (e.g., "Arial", "Times New Roman")
+- `foreground_color`, `background_color` (string): Hex color (e.g., "#FF0000")
+- `link_url` (string): URL for hyperlink
+
+#### apply_paragraph_style
+Range targeting (choose one):
+- `start_index` and `end_index` (integers): Direct range specification
+- `text_to_find` (string) and `match_instance` (integer): Find text, format its paragraph
+- `index_within_paragraph` (integer): Format paragraph containing this index
+
+Style properties:
+- `alignment` (string): "START", "END", "CENTER", "JUSTIFIED"
+- `indent_start`, `indent_end` (float): Indentation in points
+- `space_above`, `space_below` (float): Spacing in points
+- `named_style_type` (string): "NORMAL_TEXT", "HEADING_1" through "HEADING_6", "TITLE", "SUBTITLE"
+- `keep_with_next` (boolean): Keep paragraph with next
+
+#### insert_table
+- `rows` (integer): Number of rows
+- `columns` (integer): Number of columns
+- `index` (integer): Position to insert (1-based)
+
+#### insert_page_break
+- `index` (integer): Position to insert (1-based)
+
+#### insert_image_from_url
+- `image_url` (string): Publicly accessible image URL
+- `index` (integer): Position to insert (1-based)
+- `width`, `height` (float, optional): Dimensions in points
+
+### Limitations
+
+- Maximum 500 operations per call (automatically batched into groups of 50 for Google API)
+- Operations are executed in the order provided
+- All operations must be valid before any are executed (fail-fast validation)
+
+### Tips for Best Performance
+
+1. **Group related operations**: Combine all changes to a document in a single bulk call
+2. **Use index-based targeting when possible**: Text-finding operations require fetching the document first
+3. **Order matters**: Structure your operations to account for index changes (e.g., insert text before applying formatting to that text)
 
 ## Security Notes
 
