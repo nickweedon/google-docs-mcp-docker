@@ -25,6 +25,7 @@ mcp = FastMCP(
     This MCP server provides tools for reading, creating, and editing Google Documents.
 
     Key capabilities:
+    - Create new Google Documents (blank or from markdown)
     - Read document content in text, JSON, or Markdown format
     - Insert, append, and delete text
     - Apply text and paragraph formatting
@@ -498,6 +499,49 @@ def upload_file_to_drive(
     Supports any file type. Returns the file ID and web link.
     """
     return drive.upload_file_to_drive(file_data, name, mime_type, parent_folder_id)
+
+
+@mcp.tool()
+def create_google_doc(
+    title: Annotated[str, "Title for the new Google Document"],
+    parent_folder_id: Annotated[
+        str | None, "Parent folder ID. If not provided, creates in Drive root."
+    ] = None,
+) -> str:
+    """
+    Create a new blank Google Document.
+
+    Returns the document ID and web link for the newly created document.
+    """
+    return drive.create_google_doc(title, parent_folder_id)
+
+
+@mcp.tool()
+def create_google_doc_from_markdown(
+    title: Annotated[str, "Title for the new Google Document"],
+    markdown_content: Annotated[str, "Markdown content to import into the document"],
+    parent_folder_id: Annotated[
+        str | None, "Parent folder ID. If not provided, creates in Drive root."
+    ] = None,
+) -> str:
+    """
+    Create a new Google Document with content imported from markdown.
+
+    Supports common markdown syntax including:
+    - Headings (# to ######)
+    - Bold (**text** or __text__)
+    - Italic (*text* or _text_)
+    - Bold+Italic (***text***)
+    - Bullet lists (- or * prefix)
+    - Numbered lists (1. prefix)
+    - Links ([text](url))
+    - Inline code (`code`)
+    - Code blocks (```code```)
+    - Horizontal rules (--- or ***)
+
+    Returns the document ID and web link for the newly created document.
+    """
+    return drive.create_google_doc_from_markdown(title, markdown_content, parent_folder_id)
 
 
 def main() -> None:

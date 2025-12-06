@@ -586,3 +586,448 @@ def upload_file_to_drive(
         if "403" in error_message:
             raise ToolError("Permission denied. Make sure you have write access to Drive.")
         raise ToolError(f"Failed to upload file: {error_message}")
+
+
+def create_google_doc(
+    title: str,
+    parent_folder_id: str | None = None,
+) -> str:
+    """
+    Create a new blank Google Document.
+
+    Args:
+        title: Title for the new document
+        parent_folder_id: Optional parent folder ID (None for root)
+
+    Returns:
+        Success message with document ID and link
+
+    Raises:
+        UserError: For permission errors
+    """
+    drive = get_drive_client()
+    log(f'Creating new Google Doc: "{title}"')
+
+    try:
+        metadata: dict[str, Any] = {
+            "name": title,
+            "mimeType": "application/vnd.google-apps.document",
+        }
+
+        if parent_folder_id:
+            metadata["parents"] = [parent_folder_id]
+
+        response = (
+            drive.files()
+            .create(requestBody=metadata, fields="id,name,webViewLink")
+            .execute()
+        )
+
+        return (
+            f"Successfully created Google Document \"{response.get('name')}\"\n"
+            f"ID: {response.get('id')}\n"
+            f"Link: {response.get('webViewLink')}"
+        )
+
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error creating Google Doc: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Parent folder not found. Check the parent folder ID.")
+        if "403" in error_message:
+            raise ToolError("Permission denied. Make sure you have write access to Drive.")
+        raise ToolError(f"Failed to create document: {error_message}")
+
+
+def create_google_doc_from_markdown(
+    title: str,
+    markdown_content: str,
+    parent_folder_id: str | None = None,
+) -> str:
+    """
+    Create a new Google Document with content from markdown.
+
+    Args:
+        title: Title for the new document
+        markdown_content: Markdown content to import into the document
+        parent_folder_id: Optional parent folder ID (None for root)
+
+    Returns:
+        Success message with document ID and link
+
+    Raises:
+        UserError: For permission errors
+    """
+    from google_docs_mcp.auth import get_docs_client
+
+    drive = get_drive_client()
+    docs = get_docs_client()
+    log(f'Creating new Google Doc from markdown: "{title}"')
+
+    try:
+        # First, create a blank document
+        metadata: dict[str, Any] = {
+            "name": title,
+            "mimeType": "application/vnd.google-apps.document",
+        }
+
+        if parent_folder_id:
+            metadata["parents"] = [parent_folder_id]
+
+        response = (
+            drive.files()
+            .create(requestBody=metadata, fields="id,name,webViewLink")
+            .execute()
+        )
+
+        document_id = response.get("id")
+
+        # Convert markdown to Google Docs requests
+        requests = _markdown_to_docs_requests(markdown_content)
+
+        if requests:
+            # Apply the requests to insert content
+            docs.documents().batchUpdate(
+                documentId=document_id,
+                body={"requests": requests}
+            ).execute()
+
+        return (
+            f"Successfully created Google Document \"{response.get('name')}\" from markdown\n"
+            f"ID: {document_id}\n"
+            f"Link: {response.get('webViewLink')}"
+        )
+
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error creating Google Doc from markdown: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Parent folder not found. Check the parent folder ID.")
+        if "403" in error_message:
+            raise ToolError("Permission denied. Make sure you have write access to Drive.")
+        raise ToolError(f"Failed to create document from markdown: {error_message}")
+
+
+def _markdown_to_docs_requests(markdown: str) -> list[dict[str, Any]]:
+    """
+    Convert markdown content to Google Docs API requests.
+
+    This is a basic markdown parser that supports:
+    - Headings (# to ######)
+    - Bold (**text** or __text__)
+    - Italic (*text* or _text_)
+    - Bold+Italic (***text***)
+    - Bullet lists (- or * prefix)
+    - Numbered lists (1. prefix)
+    - Links ([text](url))
+    - Inline code (`code`)
+    - Code blocks (```code```)
+    - Horizontal rules (--- or ***)
+
+    Args:
+        markdown: Markdown string to convert
+
+    Returns:
+        List of Google Docs API requests to insert and format content
+    """
+    import re
+
+    requests: list[dict[str, Any]] = []
+    current_index = 1  # Google Docs uses 1-based indexing
+    lines = markdown.split('\n')
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+
+        # Skip empty lines
+        if not line.strip():
+            i += 1
+            continue
+
+        # Code blocks
+        if line.strip().startswith('```'):
+            i += 1
+            code_lines = []
+            while i < len(lines) and not lines[i].strip().startswith('```'):
+                code_lines.append(lines[i])
+                i += 1
+            i += 1  # Skip closing ```
+
+            code_text = '\n'.join(code_lines) + '\n\n'
+            requests.append({
+                'insertText': {
+                    'location': {'index': current_index},
+                    'text': code_text
+                }
+            })
+            # Apply monospace font to code block
+            requests.append({
+                'updateTextStyle': {
+                    'range': {
+                        'startIndex': current_index,
+                        'endIndex': current_index + len(code_text) - 2
+                    },
+                    'textStyle': {
+                        'fontFamily': 'Courier New',
+                        'fontSize': {'magnitude': 10, 'unit': 'PT'}
+                    },
+                    'fields': 'fontFamily,fontSize'
+                }
+            })
+            current_index += len(code_text)
+            continue
+
+        # Headings
+        heading_match = re.match(r'^(#{1,6})\s+(.+)$', line)
+        if heading_match:
+            level = len(heading_match.group(1))
+            text = heading_match.group(2) + '\n'
+
+            requests.append({
+                'insertText': {
+                    'location': {'index': current_index},
+                    'text': text
+                }
+            })
+
+            # Apply heading style
+            style_type = f'HEADING_{level}' if level <= 6 else 'HEADING_6'
+            requests.append({
+                'updateParagraphStyle': {
+                    'range': {
+                        'startIndex': current_index,
+                        'endIndex': current_index + len(text)
+                    },
+                    'paragraphStyle': {
+                        'namedStyleType': style_type
+                    },
+                    'fields': 'namedStyleType'
+                }
+            })
+
+            current_index += len(text)
+            i += 1
+            continue
+
+        # Horizontal rules
+        if re.match(r'^(\*{3,}|-{3,}|_{3,})$', line.strip()):
+            # Insert a paragraph break to represent the rule
+            hr_text = '\n'
+            requests.append({
+                'insertText': {
+                    'location': {'index': current_index},
+                    'text': hr_text
+                }
+            })
+            current_index += len(hr_text)
+            i += 1
+            continue
+
+        # Bullet lists
+        bullet_match = re.match(r'^[\-\*]\s+(.+)$', line)
+        if bullet_match:
+            text = bullet_match.group(1) + '\n'
+            start_index = current_index
+
+            requests.append({
+                'insertText': {
+                    'location': {'index': current_index},
+                    'text': text
+                }
+            })
+            current_index += len(text)
+
+            # Apply inline formatting
+            _apply_inline_formatting(requests, text, start_index)
+
+            # Create bullet list
+            requests.append({
+                'createParagraphBullets': {
+                    'range': {
+                        'startIndex': start_index,
+                        'endIndex': current_index
+                    },
+                    'bulletPreset': 'BULLET_DISC_CIRCLE_SQUARE'
+                }
+            })
+
+            i += 1
+            continue
+
+        # Numbered lists
+        numbered_match = re.match(r'^\d+\.\s+(.+)$', line)
+        if numbered_match:
+            text = numbered_match.group(1) + '\n'
+            start_index = current_index
+
+            requests.append({
+                'insertText': {
+                    'location': {'index': current_index},
+                    'text': text
+                }
+            })
+            current_index += len(text)
+
+            # Apply inline formatting
+            _apply_inline_formatting(requests, text, start_index)
+
+            # Create numbered list
+            requests.append({
+                'createParagraphBullets': {
+                    'range': {
+                        'startIndex': start_index,
+                        'endIndex': current_index
+                    },
+                    'bulletPreset': 'NUMBERED_DECIMAL_ALPHA_ROMAN'
+                }
+            })
+
+            i += 1
+            continue
+
+        # Regular paragraph
+        text = line + '\n'
+        start_index = current_index
+
+        requests.append({
+            'insertText': {
+                'location': {'index': current_index},
+                'text': text
+            }
+        })
+        current_index += len(text)
+
+        # Apply inline formatting
+        _apply_inline_formatting(requests, text, start_index)
+
+        i += 1
+
+    return requests
+
+
+def _apply_inline_formatting(
+    requests: list[dict[str, Any]],
+    text: str,
+    start_index: int
+) -> None:
+    """
+    Apply inline formatting (bold, italic, links, code) to text.
+
+    Modifies the requests list in place.
+
+    Args:
+        requests: List of requests to append formatting requests to
+        text: The text to analyze for formatting
+        start_index: The starting index of the text in the document
+    """
+    import re
+
+    # Bold+Italic (***text***)
+    for match in re.finditer(r'\*\*\*(.+?)\*\*\*', text):
+        content_start = start_index + match.start()
+        content_end = start_index + match.end()
+        requests.append({
+            'updateTextStyle': {
+                'range': {
+                    'startIndex': content_start,
+                    'endIndex': content_end
+                },
+                'textStyle': {
+                    'bold': True,
+                    'italic': True
+                },
+                'fields': 'bold,italic'
+            }
+        })
+        # Delete the markdown symbols
+        requests.append({
+            'deleteContentRange': {
+                'range': {
+                    'startIndex': content_start,
+                    'endIndex': content_start + 3
+                }
+            }
+        })
+        requests.append({
+            'deleteContentRange': {
+                'range': {
+                    'startIndex': content_end - 6,
+                    'endIndex': content_end - 3
+                }
+            }
+        })
+
+    # Bold (**text** or __text__)
+    for match in re.finditer(r'(\*\*|__)(.+?)\1', text):
+        if '***' in match.group(0):
+            continue  # Skip if part of bold+italic
+        content_start = start_index + match.start() + 2
+        content_end = start_index + match.end() - 2
+        requests.append({
+            'updateTextStyle': {
+                'range': {
+                    'startIndex': content_start,
+                    'endIndex': content_end
+                },
+                'textStyle': {
+                    'bold': True
+                },
+                'fields': 'bold'
+            }
+        })
+
+    # Italic (*text* or _text_)
+    for match in re.finditer(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', text):
+        content_start = start_index + match.start() + 1
+        content_end = start_index + match.end() - 1
+        requests.append({
+            'updateTextStyle': {
+                'range': {
+                    'startIndex': content_start,
+                    'endIndex': content_end
+                },
+                'textStyle': {
+                    'italic': True
+                },
+                'fields': 'italic'
+            }
+        })
+
+    # Links [text](url)
+    for match in re.finditer(r'\[([^\]]+)\]\(([^)]+)\)', text):
+        link_text = match.group(1)
+        url = match.group(2)
+        content_start = start_index + match.start()
+        content_end = content_start + len(link_text)
+
+        requests.append({
+            'updateTextStyle': {
+                'range': {
+                    'startIndex': content_start,
+                    'endIndex': content_end
+                },
+                'textStyle': {
+                    'link': {'url': url}
+                },
+                'fields': 'link'
+            }
+        })
+
+    # Inline code (`code`)
+    for match in re.finditer(r'`([^`]+)`', text):
+        content_start = start_index + match.start() + 1
+        content_end = start_index + match.end() - 1
+        requests.append({
+            'updateTextStyle': {
+                'range': {
+                    'startIndex': content_start,
+                    'endIndex': content_end
+                },
+                'textStyle': {
+                    'fontFamily': 'Courier New',
+                    'fontSize': {'magnitude': 10, 'unit': 'PT'}
+                },
+                'fields': 'fontFamily,fontSize'
+            }
+        })

@@ -143,6 +143,10 @@ def read_google_doc(
 
 ## Available Tools
 
+### Document Creation
+- `create_google_doc` - Create a new blank Google Document
+- `create_google_doc_from_markdown` - Create a new Google Document from markdown content
+
 ### Document Operations
 - `read_google_doc` - Read document content (text/json/markdown)
 - `append_to_google_doc` - Append text to end of document

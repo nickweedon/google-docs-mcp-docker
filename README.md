@@ -4,6 +4,33 @@ Docker configuration for running the [Google Docs MCP Server](https://github.com
 
 This server provides Model Context Protocol (MCP) tools for interacting with Google Docs and Google Drive, enabling AI assistants like Claude to read, write, and manage your documents.
 
+## Features
+
+### Document Creation
+- **Create blank documents** - Create new Google Documents from scratch
+- **Import from Markdown** - Create Google Docs with content imported from markdown, including support for:
+  - Headings (# to ######)
+  - Bold, italic, and bold+italic formatting
+  - Bullet and numbered lists
+  - Links and inline code
+  - Code blocks with monospace formatting
+  - Horizontal rules
+
+### Document Operations
+- **Read documents** - Export content as text, JSON, or markdown
+- **Edit documents** - Insert, append, and delete text
+- **Format text** - Apply character and paragraph styles (bold, italic, colors, fonts, alignment, etc.)
+- **Manage structure** - Insert tables, page breaks, and images
+- **Handle tabs** - List and work with multi-tab documents
+
+### Comments
+- List, add, reply to, resolve, and delete comments on documents
+
+### Drive Integration
+- List, search, and get document metadata
+- Create and manage folders
+- Upload files and images
+
 ## Prerequisites
 
 - Docker and Docker Compose installed
