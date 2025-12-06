@@ -1254,9 +1254,8 @@ def _prepare_insert_image_request(op_dict: dict) -> dict:
     if not image_url:
         raise ToolError("image_url is required for insert_image_from_url operation")
 
-    # Validate URL format
-    if not image_url.startswith(("http://", "https://")):
-        raise ToolError(f"Invalid image URL: {image_url}. Must start with http:// or https://")
+    # Validate URL is accessible (imported from helpers)
+    helpers._validate_image_url(image_url)
 
     location = {"index": index}
     uri = image_url

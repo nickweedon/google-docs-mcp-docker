@@ -665,6 +665,78 @@ def insert_text(docs, document_id: str, text: str, index: int) -> dict | None:
     return execute_batch_update_sync(docs, document_id, [request])
 
 
+def _validate_image_url(image_url: str) -> None:
+    """
+    Validate that an image URL is accessible before sending to Google Docs API.
+
+    Args:
+        image_url: The URL to validate
+
+    Raises:
+        ToolError: If the URL is invalid or inaccessible
+    """
+    import urllib.request
+    from urllib.parse import urlparse
+    from urllib.error import HTTPError, URLError
+
+    # Validate URL format
+    try:
+        result = urlparse(image_url)
+        if not all([result.scheme, result.netloc]):
+            raise ValueError("Invalid URL")
+        if result.scheme not in ('http', 'https'):
+            raise ValueError("URL must use http or https")
+    except Exception:
+        raise ToolError(f"Invalid image URL format: {image_url}")
+
+    # Check if URL is accessible
+    try:
+        # Create a HEAD request to check accessibility without downloading the full image
+        req = urllib.request.Request(image_url, method='HEAD')
+        req.add_header('User-Agent', 'Mozilla/5.0 (compatible; GoogleDocsBot/1.0)')
+
+        with urllib.request.urlopen(req, timeout=10) as response:
+            status_code = response.getcode()
+            content_type = response.headers.get('Content-Type', '')
+
+            if status_code != 200:
+                raise ToolError(
+                    f"Image URL returned status {status_code}: {image_url}. "
+                    "The image must be publicly accessible."
+                )
+
+            # Verify it's an image
+            if content_type and not content_type.startswith('image/'):
+                raise ToolError(
+                    f"URL does not point to an image (Content-Type: {content_type}): {image_url}. "
+                    "Expected image/* content type."
+                )
+
+    except HTTPError as e:
+        raise ToolError(
+            f"Image URL returned HTTP {e.code} error: {image_url}. "
+            "Please verify the URL is correct and publicly accessible."
+        )
+    except URLError as e:
+        raise ToolError(
+            f"Cannot access image URL: {image_url}. "
+            f"Error: {str(e.reason)}. "
+            "The image must be publicly accessible on the internet."
+        )
+    except TimeoutError:
+        raise ToolError(
+            f"Timeout accessing image URL: {image_url}. "
+            "The server did not respond in time."
+        )
+    except ToolError:
+        raise
+    except Exception as e:
+        raise ToolError(
+            f"Failed to validate image URL: {image_url}. "
+            f"Error: {str(e)}"
+        )
+
+
 def insert_inline_image(
     docs,
     document_id: str,
@@ -688,16 +760,10 @@ def insert_inline_image(
         Batch update response
 
     Raises:
-        UserError: If URL format is invalid
+        ToolError: If URL is invalid or inaccessible
     """
-    from urllib.parse import urlparse
-
-    try:
-        result = urlparse(image_url)
-        if not all([result.scheme, result.netloc]):
-            raise ValueError("Invalid URL")
-    except Exception:
-        raise ToolError(f"Invalid image URL format: {image_url}")
+    # Validate URL is accessible before attempting insertion
+    _validate_image_url(image_url)
 
     request: dict[str, Any] = {
         "insertInlineImage": {"location": {"index": index}, "uri": image_url}

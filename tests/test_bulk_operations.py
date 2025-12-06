@@ -205,8 +205,15 @@ class TestPrepareInsertPageBreakRequest:
 class TestPrepareInsertImageRequest:
     """Tests for _prepare_insert_image_request function."""
 
-    def test_basic_insert_image(self):
+    @patch('urllib.request.urlopen')
+    def test_basic_insert_image(self, mock_urlopen):
         """Should prepare basic image insert request."""
+        # Mock URL validation
+        mock_response = MagicMock()
+        mock_response.getcode.return_value = 200
+        mock_response.headers.get.return_value = 'image/png'
+        mock_urlopen.return_value.__enter__.return_value = mock_response
+
         op_dict = {
             "image_url": "https://example.com/image.png",
             "index": 1,
@@ -217,8 +224,15 @@ class TestPrepareInsertImageRequest:
         assert request["insertInlineImage"]["location"]["index"] == 1
         assert "objectSize" not in request["insertInlineImage"]
 
-    def test_insert_image_with_dimensions(self):
+    @patch('urllib.request.urlopen')
+    def test_insert_image_with_dimensions(self, mock_urlopen):
         """Should include dimensions when provided."""
+        # Mock URL validation
+        mock_response = MagicMock()
+        mock_response.getcode.return_value = 200
+        mock_response.headers.get.return_value = 'image/png'
+        mock_urlopen.return_value.__enter__.return_value = mock_response
+
         op_dict = {
             "image_url": "https://example.com/image.png",
             "index": 1,
