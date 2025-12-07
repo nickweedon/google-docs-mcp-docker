@@ -791,6 +791,36 @@ def insert_inline_image(
     # Validate URL is accessible before attempting insertion
     _validate_image_url(image_url)
 
+    # If this is a Google Drive URL, ensure it has public permissions
+    if 'drive.google.com' in image_url:
+        import re
+        from google_docs_mcp.auth import get_drive_client
+
+        # Extract file ID from various Drive URL formats
+        file_id_match = re.search(r'[?&]id=([^&]+)', image_url)
+        if file_id_match:
+            file_id = file_id_match.group(1)
+            log(f"Setting public permissions for Google Drive file {file_id}")
+
+            try:
+                drive = get_drive_client()
+                # Make the file publicly readable so Google Docs can access it
+                permission = {
+                    "type": "anyone",
+                    "role": "reader"
+                }
+                drive.permissions().create(
+                    fileId=file_id,
+                    body=permission
+                ).execute()
+                log(f"Successfully set public permissions for Drive file {file_id}")
+            except Exception as e:
+                log(f"Warning: Could not set public permissions for Drive file {file_id}: {e}")
+                raise ToolError(
+                    f"Failed to set public permissions on Google Drive file {file_id}. "
+                    "Please ensure the file is publicly accessible or share it with 'Anyone with the link'."
+                )
+
     request: dict[str, Any] = {
         "insertInlineImage": {"location": {"index": index}, "uri": image_url}
     }

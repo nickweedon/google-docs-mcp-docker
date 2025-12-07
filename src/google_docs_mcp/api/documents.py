@@ -5,10 +5,11 @@ Handles reading, writing, and formatting document content.
 """
 
 from typing import Any
+import re
 
 from fastmcp.exceptions import ToolError
 
-from google_docs_mcp.auth import get_docs_client
+from google_docs_mcp.auth import get_docs_client, get_drive_client
 from google_docs_mcp.types import TextStyleArgs, ParagraphStyleArgs
 from google_docs_mcp.api import helpers
 from google_docs_mcp.utils import log
@@ -1256,6 +1257,33 @@ def _prepare_insert_image_request(op_dict: dict) -> dict:
 
     # Validate URL is accessible (imported from helpers)
     helpers._validate_image_url(image_url)
+
+    # If this is a Google Drive URL, ensure it has public permissions
+    if 'drive.google.com' in image_url:
+        # Extract file ID from various Drive URL formats
+        file_id_match = re.search(r'[?&]id=([^&]+)', image_url)
+        if file_id_match:
+            file_id = file_id_match.group(1)
+            log(f"Setting public permissions for Google Drive file {file_id}")
+
+            try:
+                drive = get_drive_client()
+                # Make the file publicly readable so Google Docs can access it
+                permission = {
+                    "type": "anyone",
+                    "role": "reader"
+                }
+                drive.permissions().create(
+                    fileId=file_id,
+                    body=permission
+                ).execute()
+                log(f"Successfully set public permissions for Drive file {file_id}")
+            except Exception as e:
+                log(f"Warning: Could not set public permissions for Drive file {file_id}: {e}")
+                raise ToolError(
+                    f"Failed to set public permissions on Google Drive file {file_id}. "
+                    "Please ensure the file is publicly accessible or share it with 'Anyone with the link'."
+                )
 
     location = {"index": index}
     uri = image_url
