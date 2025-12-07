@@ -14,7 +14,7 @@ from fastmcp import FastMCP
 from mcp.types import ImageContent
 
 from google_docs_mcp.types import TextStyleArgs, ParagraphStyleArgs
-from google_docs_mcp.api import documents, comments, drive
+from google_docs_mcp.api import documents, comments, drive, resources
 from google_docs_mcp.utils import log
 
 
@@ -608,6 +608,78 @@ def create_google_doc_from_markdown(
     Returns the document ID and web link for the newly created document.
     """
     return drive.create_google_doc_from_markdown(title, markdown_content, parent_folder_id)
+
+
+# === RESOURCE-BASED UPLOAD TOOLS ===
+
+
+@mcp.tool()
+def upload_image_to_drive_from_resource(
+    resource_id: Annotated[str, "Resource identifier (e.g., 'blob://1733437200-a3f9d8c2b1e4f6a7.png')"],
+    name: Annotated[
+        str | None, "Name for the file in Drive. If not provided, uses resource filename."
+    ] = None,
+    parent_folder_id: Annotated[
+        str | None, "Parent folder ID. If not provided, uploads to Drive root."
+    ] = None,
+) -> str:
+    """
+    Upload an image to Google Drive from a resource identifier.
+
+    The resource identifier references a blob in the shared blob storage volume
+    (mapped via Docker volumes) that can be accessed by multiple MCP servers.
+
+    This allows other MCP servers to upload resources to the blob storage,
+    and this server can then upload those resources to Google Drive without
+    needing to transfer the actual file data through the MCP protocol.
+
+    Returns the file ID and web link for the uploaded image.
+    """
+    return resources.upload_image_to_drive_from_resource(resource_id, name, parent_folder_id)
+
+
+@mcp.tool()
+def upload_file_to_drive_from_resource(
+    resource_id: Annotated[str, "Resource identifier (e.g., 'blob://1733437200-a3f9d8c2b1e4f6a7.pdf')"],
+    name: Annotated[
+        str | None, "Name for the file in Drive. If not provided, uses resource filename."
+    ] = None,
+    parent_folder_id: Annotated[
+        str | None, "Parent folder ID. If not provided, uploads to Drive root."
+    ] = None,
+) -> str:
+    """
+    Upload a file to Google Drive from a resource identifier.
+
+    The resource identifier references a blob in the shared blob storage volume
+    (mapped via Docker volumes) that can be accessed by multiple MCP servers.
+
+    This allows other MCP servers to upload resources to the blob storage,
+    and this server can then upload those resources to Google Drive without
+    needing to transfer the actual file data through the MCP protocol.
+
+    Supports any file type. Returns the file ID and web link.
+    """
+    return resources.upload_file_to_drive_from_resource(resource_id, name, parent_folder_id)
+
+
+@mcp.tool()
+def insert_image_from_resource(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    resource_id: Annotated[str, "Resource identifier (e.g., 'blob://1733437200-a3f9d8c2b1e4f6a7.png')"],
+    index: Annotated[int, "The index (1-based) where the image should be inserted"],
+    width: Annotated[float | None, "Width of the image in points"] = None,
+    height: Annotated[float | None, "Height of the image in points"] = None,
+) -> str:
+    """
+    Insert an image into a Google Document from a resource identifier.
+
+    The resource identifier references a blob in the shared blob storage volume
+    (mapped via Docker volumes) that can be accessed by multiple MCP servers.
+
+    The image is first uploaded to Google Drive, then inserted into the document.
+    """
+    return resources.insert_image_from_resource(document_id, resource_id, index, width, height)
 
 
 def main() -> None:

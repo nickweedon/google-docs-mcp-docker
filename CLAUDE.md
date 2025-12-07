@@ -57,6 +57,7 @@ google-docs-mcp/
    - `auth.py` - OAuth2 client, authentication, and token management
    - `api/*.py` - Domain-specific API methods only
    - `api/helpers.py` - Shared Google Docs API helper functions
+   - `api/resources.py` - Resource-based file operations using mcp_mapped_resource_lib
    - `utils/` - Shared helper functions and utilities
    - `server.py` - MCP server setup and tool registration
 
@@ -186,11 +187,19 @@ def read_google_doc(
 - `upload_image_to_drive` - Upload image to Drive from base64 data
 - `upload_file_to_drive` - Upload any file to Drive from base64 data
 
+### Resource-Based File Operations
+- `upload_image_to_drive_from_resource` - Upload image to Drive using resource identifier from shared blob storage
+- `upload_file_to_drive_from_resource` - Upload any file to Drive using resource identifier from shared blob storage
+- `insert_image_from_resource` - Insert image into document using resource identifier from shared blob storage
+
+**Note:** These tools require the `BLOB_STORAGE_ROOT` environment variable to be set and a shared Docker volume for blob storage. See README.md for setup instructions.
+
 ## Development Notes
 
 - Uses FastMCP framework for MCP server implementation
 - Uses `google-api-python-client` for Google API calls
 - Uses `google-auth` and `google-auth-oauthlib` for authentication
+- Uses `mcp-mapped-resource-lib` for resource-based file sharing across MCP servers
 - Requires Python 3.10+
 
 ### FastMCP Documentation
@@ -246,6 +255,9 @@ docker-compose up --build
 |----------|-------------|
 | `SERVICE_ACCOUNT_PATH` | Optional: Path to service account JSON key file |
 | `DOCKER_ENV` | Set automatically in Docker container |
+| `BLOB_STORAGE_ROOT` | Optional: Path to blob storage directory for resource-based file operations (required if using resource-based tools) |
+| `BLOB_STORAGE_MAX_SIZE_MB` | Optional: Maximum file size in MB for blob storage (default: 100) |
+| `BLOB_STORAGE_TTL_HOURS` | Optional: Time-to-live for blobs in hours, controls automatic cleanup (default: 24) |
 
 ## Testing
 

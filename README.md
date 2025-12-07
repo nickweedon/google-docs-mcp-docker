@@ -31,6 +31,7 @@ This server provides Model Context Protocol (MCP) tools for interacting with Goo
 - List, search, and get document metadata
 - Create and manage folders
 - Upload files and images
+- **Resource-based uploads** - Upload files and images using resource identifiers from shared blob storage (for integration with other MCP servers)
 
 ## Prerequisites
 
@@ -167,6 +168,14 @@ Run the MCP server in a Docker container. This requires mounting the credentials
         "3000:3000",
         "-v",
         "C:/path/to/google-docs-mcp/credentials:/workspace/credentials",
+        "-v",
+        "blob-storage:/mnt/blob-storage",
+        "-e",
+        "BLOB_STORAGE_ROOT=/mnt/blob-storage",
+        "-e",
+        "BLOB_STORAGE_MAX_SIZE_MB=100",
+        "-e",
+        "BLOB_STORAGE_TTL_HOURS=24",
         "workspace-google-docs-mcp:latest"
       ]
     }
@@ -176,9 +185,13 @@ Run the MCP server in a Docker container. This requires mounting the credentials
 
 **Configuration notes:**
 - `-p 3000:3000` - Exposes port 3000 for OAuth token refresh callbacks
-- The `-v` mount maps your local `credentials/` directory (containing both `credentials.json` and `token.json`) to `/workspace/credentials/` in the container
+- The first `-v` mount maps your local `credentials/` directory (containing both `credentials.json` and `token.json`) to `/workspace/credentials/` in the container
+- The second `-v` mount creates a shared blob storage volume for resource-based file uploads (optional, only needed if using resource-based upload features)
+- The `-e` flags set environment variables for blob storage configuration (optional, defaults shown)
 
 **Note:** Adjust the path (`C:/path/to/google-docs-mcp/credentials`) to match your local credentials directory. On Linux/macOS, use Unix-style paths (e.g., `/home/user/google-docs-mcp/credentials`).
+
+**Optional:** Remove the blob storage volume mount and environment variables if you don't need resource-based upload features.
 
 ### Using a Running Container
 
@@ -268,6 +281,151 @@ uv run pytest
 | `docker-compose down` | Stop the server |
 | `docker-compose logs -f` | View server logs |
 | `docker-compose --profile auth run --rm auth` | Run auth service interactively |
+
+## Resource-Based File Uploads
+
+This MCP server integrates with [mcp_mapped_resource_lib](https://github.com/nickweedon/mcp_mapped_resource_lib) to support **resource-based file uploads**. This enables efficient file sharing between multiple MCP servers through a shared Docker volume.
+
+### Why Use Resource-Based Uploads?
+
+Traditional MCP file transfers require encoding files as base64 and passing them through the MCP protocol, which can be inefficient for large files. With resource-based uploads:
+
+1. **Other MCP servers** upload files to a shared blob storage volume and return a resource identifier (e.g., `blob://1733437200-a3f9d8c2b1e4f6a7.png`)
+2. **This server** can directly access those files via the resource identifier and upload them to Google Drive
+3. **No file data** is transferred through the MCP protocol - only the small resource identifier
+
+### Available Resource-Based Tools
+
+- `upload_image_to_drive_from_resource` - Upload an image to Drive using a resource ID
+- `upload_file_to_drive_from_resource` - Upload any file to Drive using a resource ID
+- `insert_image_from_resource` - Insert an image into a document using a resource ID
+
+### Setup for Resource-Based Uploads
+
+#### 1. Configure Blob Storage Volume
+
+Add a shared volume for blob storage in your `docker-compose.yml`:
+
+```yaml
+services:
+  google-docs-mcp:
+    # ... existing config ...
+    volumes:
+      - ./credentials:/workspace/credentials
+      - blob-storage:/mnt/blob-storage  # Add this line
+    environment:
+      - PYTHONUNBUFFERED=1
+      - BLOB_STORAGE_ROOT=/mnt/blob-storage  # Required
+      - BLOB_STORAGE_MAX_SIZE_MB=100         # Optional: max file size (default: 100)
+      - BLOB_STORAGE_TTL_HOURS=24            # Optional: time-to-live (default: 24)
+
+volumes:
+  blob-storage:
+    driver: local
+```
+
+**Configuration Options:**
+- `BLOB_STORAGE_ROOT` - **Required**. Path to the blob storage directory
+- `BLOB_STORAGE_MAX_SIZE_MB` - Optional. Maximum file size in MB (default: 100)
+- `BLOB_STORAGE_TTL_HOURS` - Optional. Time-to-live for blobs in hours (default: 24). Blobs older than this will be automatically cleaned up.
+
+#### 2. Update Claude Desktop Config
+
+When using resource-based uploads, update your `claude_desktop_config.json` to mount the blob storage volume:
+
+```json
+{
+  "mcpServers": {
+    "google-docs": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-p",
+        "3000:3000",
+        "-v",
+        "C:/path/to/google-docs-mcp/credentials:/workspace/credentials",
+        "-v",
+        "blob-storage:/mnt/blob-storage",
+        "-e",
+        "BLOB_STORAGE_ROOT=/mnt/blob-storage",
+        "-e",
+        "BLOB_STORAGE_MAX_SIZE_MB=100",
+        "-e",
+        "BLOB_STORAGE_TTL_HOURS=24",
+        "workspace-google-docs-mcp:latest"
+      ]
+    }
+  }
+}
+```
+
+**Note:** Replace `C:/path/to/google-docs-mcp/credentials` with your actual credentials path. On Linux/macOS, use Unix-style paths.
+
+**Configuration:**
+- Adjust `BLOB_STORAGE_MAX_SIZE_MB` to set the maximum file size (in MB)
+- Adjust `BLOB_STORAGE_TTL_HOURS` to control how long blobs are retained before automatic cleanup
+
+#### 3. Share Volume with Other MCP Servers
+
+Other MCP servers can use the same volume. Example configuration:
+
+```json
+{
+  "mcpServers": {
+    "google-docs": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-p", "3000:3000",
+        "-v", "C:/path/to/google-docs-mcp/credentials:/workspace/credentials",
+        "-v", "blob-storage:/mnt/blob-storage",
+        "-e", "BLOB_STORAGE_ROOT=/mnt/blob-storage",
+        "-e", "BLOB_STORAGE_MAX_SIZE_MB=100",
+        "-e", "BLOB_STORAGE_TTL_HOURS=24",
+        "workspace-google-docs-mcp:latest"
+      ]
+    },
+    "other-mcp-server": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-v", "blob-storage:/mnt/blob-storage:ro",
+        "other-mcp-server:latest"
+      ]
+    }
+  }
+}
+```
+
+**Important:** The volume name (`blob-storage`) must be the same across all MCP servers that need to share resources.
+
+### Example Usage
+
+With another MCP server that has blob upload capabilities:
+
+1. **Other MCP server** uploads a file to blob storage:
+   ```
+   User: Upload this image to blob storage
+   Other Server: Uploaded! Resource ID: blob://1733437200-a3f9d8c2b1e4f6a7.png
+   ```
+
+2. **This server** uploads to Google Drive using the resource ID:
+   ```
+   User: Upload that image to my Google Drive using resource blob://1733437200-a3f9d8c2b1e4f6a7.png
+   Google Docs Server: Successfully uploaded image "photo.png" from resource blob://1733437200-a3f9d8c2b1e4f6a7.png
+   ```
+
+### Resource ID Format
+
+Resource identifiers follow the pattern: `blob://TIMESTAMP-HASH.EXT`
+
+- `TIMESTAMP` - Unix timestamp when the file was uploaded
+- `HASH` - SHA256 hash (truncated) for uniqueness
+- `EXT` - Original file extension
+
+Example: `blob://1733437200-a3f9d8c2b1e4f6a7.png`
 
 ## Bulk Operations
 

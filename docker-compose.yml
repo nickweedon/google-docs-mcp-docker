@@ -9,9 +9,10 @@ services:
     image: google-docs-mcp:latest
     container_name: google-docs-mcp-server
 
-    # Mount credentials for Google OAuth
+    # Mount credentials for Google OAuth and blob storage for resource-based uploads
     volumes:
       - ./credentials:/workspace/credentials
+      - blob-storage:/mnt/blob-storage
 
     stdin_open: true
     tty: true
@@ -25,7 +26,14 @@ services:
 
     environment:
       - PYTHONUNBUFFERED=1
+      - BLOB_STORAGE_ROOT=/mnt/blob-storage
+      - BLOB_STORAGE_MAX_SIZE_MB=100
+      - BLOB_STORAGE_TTL_HOURS=24
 
     # Override default sleep command to run the MCP server
     command: ["uv", "run", "google-docs-mcp"]
+
+volumes:
+  blob-storage:
+    driver: local
 

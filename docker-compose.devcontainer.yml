@@ -11,6 +11,9 @@ services:
     environment:
       - HOST_USER=${USER}
       - PYTHONUNBUFFERED=1
+      - BLOB_STORAGE_ROOT=/mnt/blob-storage
+      - BLOB_STORAGE_MAX_SIZE_MB=100
+      - BLOB_STORAGE_TTL_HOURS=24
     # Run as vscode user for devcontainer
     user: vscode
     # Mount local workspace for live development
@@ -18,3 +21,8 @@ services:
       - .:/workspace
       - /var/run/docker.sock:/var/run/docker.sock
       - /mnt/c/Users/${USER}/AppData/Roaming/Claude/logs:/workspace/claude-desktop-logs:ro
+      - blob-storage:/mnt/blob-storage
+
+volumes:
+  blob-storage:
+    driver: local
