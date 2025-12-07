@@ -689,6 +689,23 @@ def _validate_image_url(image_url: str) -> None:
     except Exception:
         raise ToolError(f"Invalid image URL format: {image_url}")
 
+    # Check for Google Drive URLs and provide helpful guidance
+    if 'drive.google.com' in result.netloc:
+        # For Drive URLs with the /uc endpoint, convert to download format
+        if '/uc' in image_url:
+            # Extract file ID and create proper download URL
+            import re
+            file_id_match = re.search(r'[?&]id=([^&]+)', image_url)
+            if file_id_match:
+                file_id = file_id_match.group(1)
+                # Return the download URL format that works with Google Docs
+                suggested_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+                if 'export=download' not in image_url:
+                    raise ToolError(
+                        f"Google Drive sharing URLs must use the download format. "
+                        f"Try this URL instead: {suggested_url}"
+                    )
+
     # Check if URL is accessible
     try:
         # Create a HEAD request to check accessibility without downloading the full image
@@ -705,8 +722,17 @@ def _validate_image_url(image_url: str) -> None:
                     "The image must be publicly accessible."
                 )
 
-            # Verify it's an image
-            if content_type and not content_type.startswith('image/'):
+            # Verify it's an image (skip for Google Drive download URLs as they may redirect)
+            is_drive_download = 'drive.google.com/uc' in image_url and 'export=download' in image_url
+            if not is_drive_download and content_type and not content_type.startswith('image/'):
+                # Provide helpful error for Google Drive URLs with wrong format
+                if 'drive.google.com' in image_url:
+                    raise ToolError(
+                        f"URL does not point to an image (Content-Type: {content_type}): {image_url}. "
+                        "Google Drive sharing links require public access and the download format. "
+                        "Make sure the file is shared publicly and use: "
+                        "https://drive.google.com/uc?export=download&id=FILE_ID"
+                    )
                 raise ToolError(
                     f"URL does not point to an image (Content-Type: {content_type}): {image_url}. "
                     "Expected image/* content type."

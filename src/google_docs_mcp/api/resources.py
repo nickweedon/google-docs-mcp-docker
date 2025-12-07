@@ -331,16 +331,26 @@ def insert_image_from_resource(
             .create(
                 body=file_metadata,
                 media_body=media,
-                fields="id"
+                fields="id,webContentLink"
             )
             .execute()
         )
 
         file_id = upload_response.get("id")
 
-        # Get the Drive image URL
-        # Google Docs requires a specific URL format for images
-        image_url = f"https://drive.google.com/uc?id={file_id}"
+        # Make the file publicly readable so Google Docs can access it
+        permission = {
+            "type": "anyone",
+            "role": "reader"
+        }
+        drive.permissions().create(
+            fileId=file_id,
+            body=permission
+        ).execute()
+
+        # Use the direct content URL from Drive
+        # This provides a direct download link that Google Docs can access
+        image_url = f"https://drive.google.com/uc?export=download&id={file_id}"
 
         # Insert image into document
         request = {
