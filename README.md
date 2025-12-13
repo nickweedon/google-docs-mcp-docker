@@ -8,16 +8,10 @@ This server provides Model Context Protocol (MCP) tools for interacting with Goo
 
 ### Document Creation
 - **Create blank documents** - Create new Google Documents from scratch
-- **Import from Markdown** - Create Google Docs with content imported from markdown, including support for:
-  - Headings (# to ######)
-  - Bold, italic, and bold+italic formatting
-  - Bullet and numbered lists
-  - Links and inline code
-  - Code blocks with monospace formatting
-  - Horizontal rules
+- **Import from Markdown** - Create Google Docs with content imported from markdown using Google Drive API's native markdown import (July 2024+). Supports standard markdown syntax with formatting handled by Google's native parser.
 
 ### Document Operations
-- **Read documents** - Export content as text, JSON, or markdown
+- **Read documents** - Export content as text, JSON, or markdown (markdown export uses Google Drive API's native export)
 - **Edit documents** - Insert, append, and delete text
 - **Format text** - Apply character and paragraph styles (bold, italic, colors, fonts, alignment, etc.)
 - **Manage structure** - Insert tables, page breaks, and images
@@ -585,6 +579,17 @@ Style properties:
 1. **Group related operations**: Combine all changes to a document in a single bulk call
 2. **Use index-based targeting when possible**: Text-finding operations require fetching the document first
 3. **Order matters**: Structure your operations to account for index changes (e.g., insert text before applying formatting to that text)
+
+## Markdown Support
+
+This server uses Google Drive API's native markdown import/export (available since July 2024), which provides reliable conversion with Google's official parser.
+
+### Known Limitations
+
+- **Images in markdown export**: Images are exported as base64 data URLs (a known Google limitation). For sharing documents, use the original Google Docs file.
+- **Tab support**: The markdown export API exports the entire document. Individual tab export is not supported - if you specify a tab_id, you'll get a warning and the entire document will be exported.
+- **Conversion fidelity**: Formatting quality depends on Google's implementation. Complex Google Docs features may not have exact markdown equivalents.
+- **API requirement**: Requires Google Drive API access in addition to Google Docs API (both should be enabled during setup).
 
 ## Security Notes
 

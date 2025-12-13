@@ -15,146 +15,64 @@ from google_docs_mcp.api import helpers
 from google_docs_mcp.utils import log
 
 
-def convert_docs_json_to_markdown(doc_data: dict) -> str:
+def _export_document_as_markdown(
+    document_id: str,
+    tab_id: str | None = None,
+    max_length: int | None = None
+) -> str:
     """
-    Convert Google Docs JSON structure to Markdown format.
+    Export a Google Document as markdown using Drive API's native export.
+
+    Uses Google Drive API's native markdown export (July 2024+).
 
     Args:
-        doc_data: Document data from Google Docs API
+        document_id: The ID of the Google Document
+        tab_id: Optional tab ID (warning: Drive API exports entire document)
+        max_length: Maximum character limit for output
 
     Returns:
-        Markdown string representation
+        Markdown string content
+
+    Raises:
+        ToolError: For API errors
     """
-    markdown = ""
-    body = doc_data.get("body", {})
-    content = body.get("content", [])
+    drive = get_drive_client()
 
-    if not content:
-        return "Document appears to be empty."
+    # Warn if tab_id is specified since Drive API exports entire document
+    if tab_id:
+        log(f"Warning: tab_id '{tab_id}' specified but Drive API markdown export will export the entire document")
 
-    for element in content:
-        if element.get("paragraph"):
-            markdown += _convert_paragraph_to_markdown(element["paragraph"])
-        elif element.get("table"):
-            markdown += _convert_table_to_markdown(element["table"])
-        elif element.get("sectionBreak"):
-            markdown += "\n---\n\n"
+    try:
+        # Export document as markdown using Drive API
+        markdown_bytes = (
+            drive.files()
+            .export(fileId=document_id, mimeType='text/markdown')
+            .execute()
+        )
 
-    return markdown.strip()
+        markdown_content = markdown_bytes.decode('utf-8')
+        total_length = len(markdown_content)
+        log(f"Exported document {document_id} as markdown using native Drive API: {total_length} characters")
 
+        # Apply max_length truncation if needed
+        if max_length and total_length > max_length:
+            truncated = markdown_content[:max_length]
+            return (
+                f"{truncated}\n\n... [Markdown truncated to {max_length} chars "
+                f"of {total_length} total. Use maxLength parameter to adjust limit "
+                f"or remove it to get full content.]"
+            )
 
-def _convert_paragraph_to_markdown(paragraph: dict) -> str:
-    """Convert a paragraph element to markdown."""
-    text = ""
-    is_heading = False
-    heading_level = 0
-    is_list = False
+        return markdown_content
 
-    # Check paragraph style for headings and lists
-    style = paragraph.get("paragraphStyle", {})
-    named_style = style.get("namedStyleType", "")
-
-    if named_style.startswith("HEADING_"):
-        is_heading = True
-        try:
-            heading_level = int(named_style.replace("HEADING_", ""))
-        except ValueError:
-            heading_level = 1
-    elif named_style == "TITLE":
-        is_heading = True
-        heading_level = 1
-    elif named_style == "SUBTITLE":
-        is_heading = True
-        heading_level = 2
-
-    # Check for bullet lists
-    if paragraph.get("bullet"):
-        is_list = True
-
-    # Process text elements
-    for element in paragraph.get("elements", []):
-        if element.get("textRun"):
-            text += _convert_text_run_to_markdown(element["textRun"])
-
-    # Format based on style
-    if is_heading and text.strip():
-        hashes = "#" * min(heading_level, 6)
-        return f"{hashes} {text.strip()}\n\n"
-    elif is_list and text.strip():
-        return f"- {text.strip()}\n"
-    elif text.strip():
-        return f"{text.strip()}\n\n"
-
-    return "\n"
-
-
-def _convert_text_run_to_markdown(text_run: dict) -> str:
-    """Convert a text run to markdown with formatting."""
-    text = text_run.get("content", "")
-    style = text_run.get("textStyle", {})
-
-    if style:
-        is_bold = style.get("bold", False)
-        is_italic = style.get("italic", False)
-        is_underline = style.get("underline", False)
-        is_strikethrough = style.get("strikethrough", False)
-        link = style.get("link", {})
-
-        if is_bold and is_italic:
-            text = f"***{text}***"
-        elif is_bold:
-            text = f"**{text}**"
-        elif is_italic:
-            text = f"*{text}*"
-
-        if is_underline and not link:
-            text = f"<u>{text}</u>"
-
-        if is_strikethrough:
-            text = f"~~{text}~~"
-
-        if link.get("url"):
-            text = f"[{text}]({link['url']})"
-
-    return text
-
-
-def _convert_table_to_markdown(table: dict) -> str:
-    """Convert a table to markdown format."""
-    rows = table.get("tableRows", [])
-    if not rows:
-        return ""
-
-    markdown = "\n"
-    is_first_row = True
-
-    for row in rows:
-        cells = row.get("tableCells", [])
-        if not cells:
-            continue
-
-        row_text = "|"
-        for cell in cells:
-            cell_text = ""
-            for element in cell.get("content", []):
-                paragraph = element.get("paragraph", {})
-                for pe in paragraph.get("elements", []):
-                    text_run = pe.get("textRun", {})
-                    if text_run.get("content"):
-                        cell_text += text_run["content"].replace("\n", " ").strip()
-            row_text += f" {cell_text} |"
-
-        markdown += row_text + "\n"
-
-        # Add header separator after first row
-        if is_first_row:
-            separator = "|"
-            for _ in cells:
-                separator += " --- |"
-            markdown += separator + "\n"
-            is_first_row = False
-
-    return markdown + "\n"
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error exporting document as markdown: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document not found. Check the document ID.")
+        if "403" in error_message:
+            raise ToolError("Permission denied. Make sure you have read access to the document.")
+        raise ToolError(f"Failed to export document as markdown: {error_message}")
 
 
 def read_document(
@@ -232,19 +150,8 @@ def read_document(
             return json_content
 
         if format == "markdown":
-            markdown_content = convert_docs_json_to_markdown(content_source)
-            total_length = len(markdown_content)
-            log(f"Generated markdown: {total_length} characters")
-
-            if max_length and total_length > max_length:
-                truncated = markdown_content[:max_length]
-                return (
-                    f"{truncated}\n\n... [Markdown truncated to {max_length} chars "
-                    f"of {total_length} total. Use maxLength parameter to adjust limit "
-                    f"or remove it to get full content.]"
-                )
-
-            return markdown_content
+            # Use native Drive API export for markdown
+            return _export_document_as_markdown(document_id, tab_id, max_length)
 
         # Default: Text format
         text_content = ""

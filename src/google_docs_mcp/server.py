@@ -593,17 +593,9 @@ def create_google_doc_from_markdown(
     """
     Create a new Google Document with content imported from markdown.
 
-    Supports common markdown syntax including:
-    - Headings (# to ######)
-    - Bold (**text** or __text__)
-    - Italic (*text* or _text_)
-    - Bold+Italic (***text***)
-    - Bullet lists (- or * prefix)
-    - Numbered lists (1. prefix)
-    - Links ([text](url))
-    - Inline code (`code`)
-    - Code blocks (```code```)
-    - Horizontal rules (--- or ***)
+    Uses Google Drive API's native markdown import (July 2024+).
+    Supports standard markdown syntax. Complex formatting is converted
+    using Google's native markdown parser.
 
     Returns the document ID and web link for the newly created document.
     """
