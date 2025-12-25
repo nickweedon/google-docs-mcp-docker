@@ -991,3 +991,524 @@ def chunk_requests(requests: list[dict], chunk_size: int = 50) -> list[list[dict
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive")
     return [requests[i : i + chunk_size] for i in range(0, len(requests), chunk_size)]
+
+
+# --- List & Bullet Helpers ---
+def build_create_paragraph_bullets_request(
+    start_index: int,
+    end_index: int,
+    list_type: str = "UNORDERED",
+    nesting_level: int = 0,
+    tab_id: str | None = None,
+) -> dict:
+    """
+    Build a createParagraphBullets request.
+
+    Args:
+        start_index: Starting index of range (inclusive, 1-based)
+        end_index: Ending index of range (exclusive)
+        list_type: Type of list (UNORDERED, ORDERED_DECIMAL, etc.)
+        nesting_level: Nesting level (0-8)
+        tab_id: Optional tab ID
+
+    Returns:
+        Request dictionary for Google Docs API
+    """
+    # Map list types to bullet presets
+    bullet_presets = {
+        "UNORDERED": "BULLET_DISC_CIRCLE_SQUARE",
+        "ORDERED_DECIMAL": "NUMBERED_DECIMAL_ALPHA_ROMAN",
+        "ORDERED_ALPHA": "NUMBERED_UPPERLETTER_ALPHAROMAN",
+        "ORDERED_ROMAN": "NUMBERED_UPPERROMAN_UPPERLETTER_DECIMAL",
+    }
+
+    request: dict[str, Any] = {
+        "createParagraphBullets": {
+            "range": {"startIndex": start_index, "endIndex": end_index},
+            "bulletPreset": bullet_presets.get(list_type, "BULLET_DISC_CIRCLE_SQUARE"),
+        }
+    }
+
+    if tab_id:
+        request["createParagraphBullets"]["range"]["tabId"] = tab_id
+
+    return request
+
+
+# --- Text Replace Helpers ---
+def build_replace_all_text_request(
+    find_text: str,
+    replace_text: str,
+    match_case: bool = True,
+    tab_id: str | None = None,
+) -> dict:
+    """
+    Build a replaceAllText request.
+
+    Args:
+        find_text: Text to find
+        replace_text: Text to replace it with
+        match_case: Whether to match case
+        tab_id: Optional tab ID
+
+    Returns:
+        Request dictionary for Google Docs API
+    """
+    request: dict[str, Any] = {
+        "replaceAllText": {
+            "containsText": {"text": find_text, "matchCase": match_case},
+            "replaceText": replace_text,
+        }
+    }
+
+    if tab_id:
+        request["replaceAllText"]["tabId"] = tab_id
+
+    return request
+
+
+# --- Table Finding Helper ---
+def find_table_at_index(docs, document_id: str, search_index: int) -> Any:
+    """
+    Locate a table containing or near the specified index.
+
+    Scans document structure for table elements and returns table
+    boundaries and dimensions.
+
+    Args:
+        docs: Google Docs API client
+        document_id: The document ID
+        search_index: An index that should be within the table
+
+    Returns:
+        TableInfo with table boundaries and dimensions, or None if not found
+
+    Raises:
+        ToolError: For API errors
+    """
+    from google_docs_mcp.types import TableInfo
+
+    try:
+        # Fetch document structure with minimal fields
+        res = (
+            docs.documents()
+            .get(documentId=document_id, fields="body(content(table,startIndex,endIndex))")
+            .execute()
+        )
+
+        # Scan for table elements
+        for element in res.get("body", {}).get("content", []):
+            if "table" in element:
+                table_start = element.get("startIndex", 0)
+                table_end = element.get("endIndex", 0)
+
+                # Check if search_index falls within table boundaries
+                if table_start <= search_index < table_end:
+                    table = element["table"]
+                    table_rows = table.get("tableRows", [])
+                    rows = len(table_rows)
+                    columns = (
+                        len(table_rows[0].get("tableCells", [])) if rows > 0 else 0
+                    )
+
+                    return TableInfo(
+                        start_index=table_start,
+                        end_index=table_end,
+                        rows=rows,
+                        columns=columns,
+                    )
+
+        return None
+
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error finding table at index {search_index}: {error_message}")
+        raise ToolError(f"Failed to find table: {error_message}")
+
+
+# --- Table Operation Helpers ---
+def build_insert_table_row_request(
+    table_start_index: int, row_index: int, insert_below: bool = False
+) -> dict:
+    """
+    Build an insertTableRow request.
+
+    Args:
+        table_start_index: Index where the table starts
+        row_index: Row index (0-based)
+        insert_below: True to insert below, False to insert above
+
+    Returns:
+        Request dictionary for Google Docs API
+    """
+    return {
+        "insertTableRow": {
+            "tableCellLocation": {
+                "tableStartLocation": {"index": table_start_index},
+                "rowIndex": row_index,
+                "columnIndex": 0,
+            },
+            "insertBelow": insert_below,
+        }
+    }
+
+
+def build_delete_table_row_request(table_start_index: int, row_index: int) -> dict:
+    """
+    Build a deleteTableRow request.
+
+    Args:
+        table_start_index: Index where the table starts
+        row_index: Row index (0-based)
+
+    Returns:
+        Request dictionary for Google Docs API
+    """
+    return {
+        "deleteTableRow": {
+            "tableCellLocation": {
+                "tableStartLocation": {"index": table_start_index},
+                "rowIndex": row_index,
+                "columnIndex": 0,
+            }
+        }
+    }
+
+
+def build_insert_table_column_request(
+    table_start_index: int, column_index: int, insert_right: bool = False
+) -> dict:
+    """
+    Build an insertTableColumn request.
+
+    Args:
+        table_start_index: Index where the table starts
+        column_index: Column index (0-based)
+        insert_right: True to insert right, False to insert left
+
+    Returns:
+        Request dictionary for Google Docs API
+    """
+    return {
+        "insertTableColumn": {
+            "tableCellLocation": {
+                "tableStartLocation": {"index": table_start_index},
+                "rowIndex": 0,
+                "columnIndex": column_index,
+            },
+            "insertRight": insert_right,
+        }
+    }
+
+
+def build_delete_table_column_request(table_start_index: int, column_index: int) -> dict:
+    """
+    Build a deleteTableColumn request.
+
+    Args:
+        table_start_index: Index where the table starts
+        column_index: Column index (0-based)
+
+    Returns:
+        Request dictionary for Google Docs API
+    """
+    return {
+        "deleteTableColumn": {
+            "tableCellLocation": {
+                "tableStartLocation": {"index": table_start_index},
+                "rowIndex": 0,
+                "columnIndex": column_index,
+            }
+        }
+    }
+
+
+def build_update_table_cell_style_request(
+    table_start_index: int,
+    row_index: int,
+    column_index: int,
+    background_color: str | None = None,
+    padding_top: float | None = None,
+    padding_bottom: float | None = None,
+    padding_left: float | None = None,
+    padding_right: float | None = None,
+    border_top_color: str | None = None,
+    border_top_width: float | None = None,
+    border_bottom_color: str | None = None,
+    border_bottom_width: float | None = None,
+    border_left_color: str | None = None,
+    border_left_width: float | None = None,
+    border_right_color: str | None = None,
+    border_right_width: float | None = None,
+) -> dict | None:
+    """
+    Build an updateTableCellStyle request.
+
+    Args:
+        table_start_index: Index where the table starts
+        row_index: Row index (0-based)
+        column_index: Column index (0-based)
+        background_color: Background color hex (e.g., "#FF0000")
+        padding_top: Top padding in points
+        padding_bottom: Bottom padding in points
+        padding_left: Left padding in points
+        padding_right: Right padding in points
+        border_top_color: Top border color hex
+        border_top_width: Top border width in points
+        border_bottom_color: Bottom border color hex
+        border_bottom_width: Bottom border width in points
+        border_left_color: Left border color hex
+        border_left_width: Left border width in points
+        border_right_color: Right border color hex
+        border_right_width: Right border width in points
+
+    Returns:
+        Request dictionary or None if no styles provided
+    """
+    table_cell_style: dict[str, Any] = {}
+    fields: list[str] = []
+
+    # Background color
+    if background_color:
+        rgb = hex_to_rgb_color(background_color)
+        if rgb:
+            table_cell_style["backgroundColor"] = {"color": {"rgbColor": rgb}}
+            fields.append("backgroundColor")
+
+    # Padding
+    if padding_top is not None:
+        table_cell_style["paddingTop"] = {"magnitude": padding_top, "unit": "PT"}
+        fields.append("paddingTop")
+    if padding_bottom is not None:
+        table_cell_style["paddingBottom"] = {"magnitude": padding_bottom, "unit": "PT"}
+        fields.append("paddingBottom")
+    if padding_left is not None:
+        table_cell_style["paddingLeft"] = {"magnitude": padding_left, "unit": "PT"}
+        fields.append("paddingLeft")
+    if padding_right is not None:
+        table_cell_style["paddingRight"] = {"magnitude": padding_right, "unit": "PT"}
+        fields.append("paddingRight")
+
+    # Borders
+    if border_top_color and border_top_width is not None:
+        rgb = hex_to_rgb_color(border_top_color)
+        if rgb:
+            table_cell_style["borderTop"] = {
+                "color": {"rgbColor": rgb},
+                "width": {"magnitude": border_top_width, "unit": "PT"},
+                "dashStyle": "SOLID",
+            }
+            fields.append("borderTop")
+
+    if border_bottom_color and border_bottom_width is not None:
+        rgb = hex_to_rgb_color(border_bottom_color)
+        if rgb:
+            table_cell_style["borderBottom"] = {
+                "color": {"rgbColor": rgb},
+                "width": {"magnitude": border_bottom_width, "unit": "PT"},
+                "dashStyle": "SOLID",
+            }
+            fields.append("borderBottom")
+
+    if border_left_color and border_left_width is not None:
+        rgb = hex_to_rgb_color(border_left_color)
+        if rgb:
+            table_cell_style["borderLeft"] = {
+                "color": {"rgbColor": rgb},
+                "width": {"magnitude": border_left_width, "unit": "PT"},
+                "dashStyle": "SOLID",
+            }
+            fields.append("borderLeft")
+
+    if border_right_color and border_right_width is not None:
+        rgb = hex_to_rgb_color(border_right_color)
+        if rgb:
+            table_cell_style["borderRight"] = {
+                "color": {"rgbColor": rgb},
+                "width": {"magnitude": border_right_width, "unit": "PT"},
+                "dashStyle": "SOLID",
+            }
+            fields.append("borderRight")
+
+    # Return None if no styles provided
+    if not fields:
+        return None
+
+    return {
+        "updateTableCellStyle": {
+            "tableCellLocation": {
+                "tableStartLocation": {"index": table_start_index},
+                "rowIndex": row_index,
+                "columnIndex": column_index,
+            },
+            "tableCellStyle": table_cell_style,
+            "fields": ",".join(fields),
+        }
+    }
+
+
+def build_merge_table_cells_request(
+    table_start_index: int,
+    start_row: int,
+    start_column: int,
+    row_span: int,
+    column_span: int,
+) -> dict:
+    """
+    Build a mergeTableCells request.
+
+    Args:
+        table_start_index: Index where the table starts
+        start_row: Starting row index (0-based)
+        start_column: Starting column index (0-based)
+        row_span: Number of rows to merge
+        column_span: Number of columns to merge
+
+    Returns:
+        Request dictionary for Google Docs API
+    """
+    return {
+        "mergeTableCells": {
+            "tableRange": {
+                "tableCellLocation": {
+                    "tableStartLocation": {"index": table_start_index},
+                    "rowIndex": start_row,
+                    "columnIndex": start_column,
+                },
+                "rowSpan": row_span,
+                "columnSpan": column_span,
+            }
+        }
+    }
+
+
+def build_unmerge_table_cells_request(
+    table_start_index: int, row_index: int, column_index: int
+) -> dict:
+    """
+    Build an unmergeTableCells request.
+
+    Args:
+        table_start_index: Index where the table starts
+        row_index: Row index (0-based)
+        column_index: Column index (0-based)
+
+    Returns:
+        Request dictionary for Google Docs API
+    """
+    return {
+        "unmergeTableCells": {
+            "tableCellLocation": {
+                "tableStartLocation": {"index": table_start_index},
+                "rowIndex": row_index,
+                "columnIndex": column_index,
+            }
+        }
+    }
+
+
+# --- Named Range Helpers ---
+def build_create_named_range_request(
+    name: str, start_index: int, end_index: int, tab_id: str | None = None
+) -> dict:
+    """
+    Build a createNamedRange request.
+
+    Args:
+        name: Name for the range
+        start_index: Starting index (inclusive, 1-based)
+        end_index: Ending index (exclusive)
+        tab_id: Optional tab ID
+
+    Returns:
+        Request dictionary for Google Docs API
+    """
+    request: dict[str, Any] = {
+        "createNamedRange": {
+            "name": name,
+            "range": {"startIndex": start_index, "endIndex": end_index},
+        }
+    }
+
+    if tab_id:
+        request["createNamedRange"]["range"]["tabId"] = tab_id
+
+    return request
+
+
+def build_delete_named_range_request(named_range_id: str) -> dict:
+    """
+    Build a deleteNamedRange request.
+
+    Args:
+        named_range_id: ID of the named range to delete
+
+    Returns:
+        Request dictionary for Google Docs API
+    """
+    return {"deleteNamedRange": {"namedRangeId": named_range_id}}
+
+
+# --- Content Element Helpers ---
+def build_insert_footnote_request(index: int, footnote_text: str) -> dict:
+    """
+    Build an insertFootnote request.
+
+    Args:
+        index: Index where to insert footnote (1-based)
+        footnote_text: Text content of the footnote
+
+    Returns:
+        Request dictionary for Google Docs API
+    """
+    return {
+        "insertInlineImage": {
+            "location": {"index": index},
+            "footnoteText": footnote_text,
+        }
+    }
+
+
+def build_insert_table_of_contents_request(index: int) -> dict:
+    """
+    Build an insertTableOfContents request.
+
+    Args:
+        index: Index where to insert TOC (1-based)
+
+    Returns:
+        Request dictionary for Google Docs API
+    """
+    return {"insertTableOfContents": {"location": {"index": index}}}
+
+
+def build_insert_horizontal_rule_request(index: int) -> dict:
+    """
+    Build an insertHorizontalRule request.
+
+    Args:
+        index: Index where to insert rule (1-based)
+
+    Returns:
+        Request dictionary for Google Docs API
+    """
+    return {"insertHorizontalRule": {"location": {"index": index}}}
+
+
+def build_insert_section_break_request(index: int, section_type: str = "CONTINUOUS") -> dict:
+    """
+    Build an insertSectionBreak request.
+
+    Args:
+        index: Index where to insert section break (1-based)
+        section_type: Type of section break (CONTINUOUS, NEXT_PAGE, etc.)
+
+    Returns:
+        Request dictionary for Google Docs API
+    """
+    return {
+        "insertSectionBreak": {
+            "location": {"index": index},
+            "sectionType": section_type,
+        }
+    }

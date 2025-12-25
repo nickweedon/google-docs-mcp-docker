@@ -196,6 +196,186 @@ class InsertImageOperation:
     height: float | None = None
 
 
+# --- New Operation Types ---
+@dataclass
+class CreateBulletListOperation:
+    """Operation to create a bulleted or numbered list."""
+
+    type: str = field(default="create_bullet_list", init=False)
+    start_index: int = 1
+    end_index: int = 1
+    list_type: str = "UNORDERED"  # UNORDERED, ORDERED_DECIMAL, etc.
+    nesting_level: int = 0
+    tab_id: str | None = None
+
+
+@dataclass
+class ReplaceAllTextOperation:
+    """Operation to find and replace all instances of text."""
+
+    type: str = field(default="replace_all_text", init=False)
+    find_text: str = ""
+    replace_text: str = ""
+    match_case: bool = True
+    tab_id: str | None = None
+
+
+@dataclass
+class InsertTableRowOperation:
+    """Operation to insert a row into a table."""
+
+    type: str = field(default="insert_table_row", init=False)
+    table_start_index: int = 1
+    row_index: int = 0
+    insert_below: bool = False
+
+
+@dataclass
+class DeleteTableRowOperation:
+    """Operation to delete a row from a table."""
+
+    type: str = field(default="delete_table_row", init=False)
+    table_start_index: int = 1
+    row_index: int = 0
+
+
+@dataclass
+class InsertTableColumnOperation:
+    """Operation to insert a column into a table."""
+
+    type: str = field(default="insert_table_column", init=False)
+    table_start_index: int = 1
+    column_index: int = 0
+    insert_right: bool = False
+
+
+@dataclass
+class DeleteTableColumnOperation:
+    """Operation to delete a column from a table."""
+
+    type: str = field(default="delete_table_column", init=False)
+    table_start_index: int = 1
+    column_index: int = 0
+
+
+@dataclass
+class UpdateTableCellStyleOperation:
+    """Operation to style a table cell."""
+
+    type: str = field(default="update_table_cell_style", init=False)
+    table_start_index: int = 1
+    row_index: int = 0
+    column_index: int = 0
+    background_color: str | None = None
+    padding_top: float | None = None
+    padding_bottom: float | None = None
+    padding_left: float | None = None
+    padding_right: float | None = None
+    border_top_color: str | None = None
+    border_top_width: float | None = None
+    border_bottom_color: str | None = None
+    border_bottom_width: float | None = None
+    border_left_color: str | None = None
+    border_left_width: float | None = None
+    border_right_color: str | None = None
+    border_right_width: float | None = None
+
+
+@dataclass
+class MergeTableCellsOperation:
+    """Operation to merge table cells."""
+
+    type: str = field(default="merge_table_cells", init=False)
+    table_start_index: int = 1
+    start_row: int = 0
+    start_column: int = 0
+    row_span: int = 1
+    column_span: int = 1
+
+
+@dataclass
+class UnmergeTableCellsOperation:
+    """Operation to unmerge table cells."""
+
+    type: str = field(default="unmerge_table_cells", init=False)
+    table_start_index: int = 1
+    row_index: int = 0
+    column_index: int = 0
+
+
+@dataclass
+class CreateNamedRangeOperation:
+    """Operation to create a named range."""
+
+    type: str = field(default="create_named_range", init=False)
+    name: str = ""
+    start_index: int = 1
+    end_index: int = 1
+    tab_id: str | None = None
+
+
+@dataclass
+class DeleteNamedRangeOperation:
+    """Operation to delete a named range."""
+
+    type: str = field(default="delete_named_range", init=False)
+    named_range_id: str = ""
+
+
+@dataclass
+class InsertFootnoteOperation:
+    """Operation to insert a footnote."""
+
+    type: str = field(default="insert_footnote", init=False)
+    index: int = 1
+    footnote_text: str = ""
+
+
+@dataclass
+class InsertTableOfContentsOperation:
+    """Operation to insert a table of contents."""
+
+    type: str = field(default="insert_table_of_contents", init=False)
+    index: int = 1
+
+
+@dataclass
+class InsertHorizontalRuleOperation:
+    """Operation to insert a horizontal rule."""
+
+    type: str = field(default="insert_horizontal_rule", init=False)
+    index: int = 1
+
+
+@dataclass
+class InsertSectionBreakOperation:
+    """Operation to insert a section break."""
+
+    type: str = field(default="insert_section_break", init=False)
+    index: int = 1
+    section_type: str = "CONTINUOUS"  # CONTINUOUS, NEXT_PAGE, etc.
+
+
+# --- Helper Types ---
+@dataclass
+class TableInfo:
+    """Information about a table in the document."""
+
+    start_index: int
+    end_index: int
+    rows: int
+    columns: int
+
+
+@dataclass
+class TableCellLocation:
+    """Location of a specific cell within a table."""
+
+    table_start_index: int
+    row_index: int
+    column_index: int
+
+
 # Union type for all bulk operations
 BulkOperation = (
     InsertTextOperation
@@ -205,6 +385,21 @@ BulkOperation = (
     | InsertTableOperation
     | InsertPageBreakOperation
     | InsertImageOperation
+    | CreateBulletListOperation
+    | ReplaceAllTextOperation
+    | InsertTableRowOperation
+    | DeleteTableRowOperation
+    | InsertTableColumnOperation
+    | DeleteTableColumnOperation
+    | UpdateTableCellStyleOperation
+    | MergeTableCellsOperation
+    | UnmergeTableCellsOperation
+    | CreateNamedRangeOperation
+    | DeleteNamedRangeOperation
+    | InsertFootnoteOperation
+    | InsertTableOfContentsOperation
+    | InsertHorizontalRuleOperation
+    | InsertSectionBreakOperation
 )
 
 

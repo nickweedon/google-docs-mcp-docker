@@ -913,6 +913,82 @@ def bulk_update_document(
                     requests.append(request)
                     operation_summaries.append(f"insert_image at index {op_dict.get('index')}")
 
+                elif op_type == "create_bullet_list":
+                    request = _prepare_create_bullet_list_request(op_dict, default_tab_id)
+                    requests.append(request)
+                    operation_summaries.append(f"create_bullet_list {op_dict.get('list_type', 'UNORDERED')}")
+
+                elif op_type == "replace_all_text":
+                    request = _prepare_replace_all_text_request(op_dict, default_tab_id)
+                    requests.append(request)
+                    operation_summaries.append(f"replace_all_text '{op_dict.get('find_text')}'")
+
+                elif op_type == "insert_table_row":
+                    request = _prepare_insert_table_row_request(op_dict)
+                    requests.append(request)
+                    operation_summaries.append("insert_table_row")
+
+                elif op_type == "delete_table_row":
+                    request = _prepare_delete_table_row_request(op_dict)
+                    requests.append(request)
+                    operation_summaries.append("delete_table_row")
+
+                elif op_type == "insert_table_column":
+                    request = _prepare_insert_table_column_request(op_dict)
+                    requests.append(request)
+                    operation_summaries.append("insert_table_column")
+
+                elif op_type == "delete_table_column":
+                    request = _prepare_delete_table_column_request(op_dict)
+                    requests.append(request)
+                    operation_summaries.append("delete_table_column")
+
+                elif op_type == "update_table_cell_style":
+                    request = _prepare_update_table_cell_style_request(op_dict)
+                    if request:  # May be None if no styles provided
+                        requests.append(request)
+                        operation_summaries.append("update_table_cell_style")
+
+                elif op_type == "merge_table_cells":
+                    request = _prepare_merge_table_cells_request(op_dict)
+                    requests.append(request)
+                    operation_summaries.append("merge_table_cells")
+
+                elif op_type == "unmerge_table_cells":
+                    request = _prepare_unmerge_table_cells_request(op_dict)
+                    requests.append(request)
+                    operation_summaries.append("unmerge_table_cells")
+
+                elif op_type == "create_named_range":
+                    request = _prepare_create_named_range_request(op_dict, default_tab_id)
+                    requests.append(request)
+                    operation_summaries.append(f"create_named_range '{op_dict.get('name')}'")
+
+                elif op_type == "delete_named_range":
+                    request = _prepare_delete_named_range_request(op_dict)
+                    requests.append(request)
+                    operation_summaries.append("delete_named_range")
+
+                elif op_type == "insert_footnote":
+                    request = _prepare_insert_footnote_request(op_dict)
+                    requests.append(request)
+                    operation_summaries.append("insert_footnote")
+
+                elif op_type == "insert_table_of_contents":
+                    request = _prepare_insert_table_of_contents_request(op_dict)
+                    requests.append(request)
+                    operation_summaries.append("insert_table_of_contents")
+
+                elif op_type == "insert_horizontal_rule":
+                    request = _prepare_insert_horizontal_rule_request(op_dict)
+                    requests.append(request)
+                    operation_summaries.append("insert_horizontal_rule")
+
+                elif op_type == "insert_section_break":
+                    request = _prepare_insert_section_break_request(op_dict)
+                    requests.append(request)
+                    operation_summaries.append(f"insert_section_break {op_dict.get('section_type', 'CONTINUOUS')}")
+
                 else:
                     raise ToolError(
                         f"Unknown operation type '{op_type}' in operation {i + 1}"
@@ -1210,3 +1286,960 @@ def _prepare_insert_image_request(op_dict: dict) -> dict:
         request["insertInlineImage"]["objectSize"] = object_size
 
     return request
+
+
+# --- New Document Operations ---
+
+
+def create_bullet_list(
+    document_id: str,
+    start_index: int,
+    end_index: int,
+    list_type: str = "UNORDERED",
+    nesting_level: int = 0,
+    tab_id: str | None = None,
+) -> str:
+    """
+    Create a bulleted or numbered list from a range of paragraphs.
+
+    Args:
+        document_id: The ID of the Google Document
+        start_index: Starting index of the range (inclusive, 1-based)
+        end_index: Ending index of the range (exclusive)
+        list_type: Type of list ("UNORDERED", "ORDERED_DECIMAL", etc.)
+        nesting_level: Nesting level (0-8)
+        tab_id: Specific tab ID to target
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    docs = get_docs_client()
+    log(f"Creating {list_type} list in range {start_index}-{end_index}")
+
+    try:
+        request = helpers.build_create_paragraph_bullets_request(
+            start_index, end_index, list_type, nesting_level, tab_id
+        )
+
+        helpers.execute_batch_update_sync(docs, document_id, [request])
+
+        return f"Successfully created {list_type} list at range {start_index}-{end_index}."
+
+    except ToolError:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error creating list: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document not found. Check the document ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the document."
+            )
+        raise ToolError(f"Failed to create list: {error_message}")
+
+
+def replace_all_text(
+    document_id: str,
+    find_text: str,
+    replace_text: str,
+    match_case: bool = True,
+    tab_id: str | None = None,
+) -> str:
+    """
+    Find and replace all instances of text in the document.
+
+    Args:
+        document_id: The ID of the Google Document
+        find_text: Text to find
+        replace_text: Text to replace it with
+        match_case: Whether to match case when finding
+        tab_id: Optional tab ID to limit replacement to specific tab
+
+    Returns:
+        Success message with replacement count
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    docs = get_docs_client()
+    log(f"Replacing all '{find_text}' with '{replace_text}' (match_case={match_case})")
+
+    try:
+        request = helpers.build_replace_all_text_request(
+            find_text, replace_text, match_case, tab_id
+        )
+
+        result = helpers.execute_batch_update_sync(docs, document_id, [request])
+
+        # Extract replacement count from response if available
+        replacements = 0
+        if result and "replies" in result:
+            for reply in result.get("replies", []):
+                if "replaceAllText" in reply:
+                    replacements = reply["replaceAllText"].get("occurrencesChanged", 0)
+
+        return f"Successfully replaced {replacements} occurrence(s) of '{find_text}' with '{replace_text}'."
+
+    except ToolError:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error replacing text: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document not found. Check the document ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the document."
+            )
+        raise ToolError(f"Failed to replace text: {error_message}")
+
+
+def insert_table_row(
+    document_id: str,
+    table_start_index: int,
+    row_index: int,
+    insert_below: bool = False,
+) -> str:
+    """
+    Insert a new row into an existing table.
+
+    Args:
+        document_id: The ID of the Google Document
+        table_start_index: The index where the table starts
+        row_index: The row index (0-based) where to insert
+        insert_below: True to insert below the row, False to insert above
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    docs = get_docs_client()
+    log(f"Inserting table row at table {table_start_index}, row {row_index}")
+
+    try:
+        request = helpers.build_insert_table_row_request(
+            table_start_index, row_index, insert_below
+        )
+
+        helpers.execute_batch_update_sync(docs, document_id, [request])
+
+        position = "below" if insert_below else "above"
+        return f"Successfully inserted row {position} row {row_index} in table at index {table_start_index}."
+
+    except ToolError:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error inserting table row: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document or table not found. Check the document ID and table index.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the document."
+            )
+        if "400" in error_message:
+            raise ToolError(
+                f"Invalid request: {error_message}. Check that the table exists at index {table_start_index} "
+                f"and row index {row_index} is valid."
+            )
+        raise ToolError(f"Failed to insert table row: {error_message}")
+
+
+def delete_table_row(
+    document_id: str,
+    table_start_index: int,
+    row_index: int,
+) -> str:
+    """
+    Delete a row from an existing table.
+
+    Args:
+        document_id: The ID of the Google Document
+        table_start_index: The index where the table starts
+        row_index: The row index (0-based) to delete
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    docs = get_docs_client()
+    log(f"Deleting table row at table {table_start_index}, row {row_index}")
+
+    try:
+        request = helpers.build_delete_table_row_request(table_start_index, row_index)
+
+        helpers.execute_batch_update_sync(docs, document_id, [request])
+
+        return f"Successfully deleted row {row_index} from table at index {table_start_index}."
+
+    except ToolError:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error deleting table row: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document or table not found. Check the document ID and table index.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the document."
+            )
+        if "400" in error_message:
+            raise ToolError(
+                f"Invalid request: {error_message}. Check that the table exists at index {table_start_index} "
+                f"and row index {row_index} is valid."
+            )
+        raise ToolError(f"Failed to delete table row: {error_message}")
+
+
+def insert_table_column(
+    document_id: str,
+    table_start_index: int,
+    column_index: int,
+    insert_right: bool = False,
+) -> str:
+    """
+    Insert a new column into an existing table.
+
+    Args:
+        document_id: The ID of the Google Document
+        table_start_index: The index where the table starts
+        column_index: The column index (0-based) where to insert
+        insert_right: True to insert right, False to insert left
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    docs = get_docs_client()
+    log(f"Inserting table column at table {table_start_index}, column {column_index}")
+
+    try:
+        request = helpers.build_insert_table_column_request(
+            table_start_index, column_index, insert_right
+        )
+
+        helpers.execute_batch_update_sync(docs, document_id, [request])
+
+        position = "right of" if insert_right else "left of"
+        return f"Successfully inserted column {position} column {column_index} in table at index {table_start_index}."
+
+    except ToolError:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error inserting table column: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document or table not found. Check the document ID and table index.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the document."
+            )
+        if "400" in error_message:
+            raise ToolError(
+                f"Invalid request: {error_message}. Check that the table exists at index {table_start_index} "
+                f"and column index {column_index} is valid."
+            )
+        raise ToolError(f"Failed to insert table column: {error_message}")
+
+
+def delete_table_column(
+    document_id: str,
+    table_start_index: int,
+    column_index: int,
+) -> str:
+    """
+    Delete a column from an existing table.
+
+    Args:
+        document_id: The ID of the Google Document
+        table_start_index: The index where the table starts
+        column_index: The column index (0-based) to delete
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    docs = get_docs_client()
+    log(f"Deleting table column at table {table_start_index}, column {column_index}")
+
+    try:
+        request = helpers.build_delete_table_column_request(table_start_index, column_index)
+
+        helpers.execute_batch_update_sync(docs, document_id, [request])
+
+        return f"Successfully deleted column {column_index} from table at index {table_start_index}."
+
+    except ToolError:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error deleting table column: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document or table not found. Check the document ID and table index.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the document."
+            )
+        if "400" in error_message:
+            raise ToolError(
+                f"Invalid request: {error_message}. Check that the table exists at index {table_start_index} "
+                f"and column index {column_index} is valid."
+            )
+        raise ToolError(f"Failed to delete table column: {error_message}")
+
+
+def update_table_cell_style(
+    document_id: str,
+    table_start_index: int,
+    row_index: int,
+    column_index: int,
+    background_color: str | None = None,
+    padding_top: float | None = None,
+    padding_bottom: float | None = None,
+    padding_left: float | None = None,
+    padding_right: float | None = None,
+    border_top_color: str | None = None,
+    border_top_width: float | None = None,
+    border_bottom_color: str | None = None,
+    border_bottom_width: float | None = None,
+    border_left_color: str | None = None,
+    border_left_width: float | None = None,
+    border_right_color: str | None = None,
+    border_right_width: float | None = None,
+) -> str:
+    """
+    Style a table cell (background, padding, borders).
+
+    Args:
+        document_id: The ID of the Google Document
+        table_start_index: The index where the table starts
+        row_index: Row index (0-based)
+        column_index: Column index (0-based)
+        background_color: Background color hex (e.g., "#FF0000")
+        padding_top: Top padding in points
+        padding_bottom: Bottom padding in points
+        padding_left: Left padding in points
+        padding_right: Right padding in points
+        border_top_color: Top border color hex
+        border_top_width: Top border width in points
+        border_bottom_color: Bottom border color hex
+        border_bottom_width: Bottom border width in points
+        border_left_color: Left border color hex
+        border_left_width: Left border width in points
+        border_right_color: Right border color hex
+        border_right_width: Right border width in points
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    docs = get_docs_client()
+    log(f"Styling table cell at table {table_start_index}, row {row_index}, column {column_index}")
+
+    try:
+        request = helpers.build_update_table_cell_style_request(
+            table_start_index,
+            row_index,
+            column_index,
+            background_color,
+            padding_top,
+            padding_bottom,
+            padding_left,
+            padding_right,
+            border_top_color,
+            border_top_width,
+            border_bottom_color,
+            border_bottom_width,
+            border_left_color,
+            border_left_width,
+            border_right_color,
+            border_right_width,
+        )
+
+        if request is None:
+            return "No style properties provided. No changes made."
+
+        helpers.execute_batch_update_sync(docs, document_id, [request])
+
+        return f"Successfully styled cell at row {row_index}, column {column_index} in table at index {table_start_index}."
+
+    except ToolError:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error styling table cell: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document or table not found. Check the document ID and table index.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the document."
+            )
+        if "400" in error_message:
+            raise ToolError(
+                f"Invalid request: {error_message}. Check that the table exists at index {table_start_index} "
+                f"and cell position ({row_index}, {column_index}) is valid."
+            )
+        raise ToolError(f"Failed to style table cell: {error_message}")
+
+
+def merge_table_cells(
+    document_id: str,
+    table_start_index: int,
+    start_row: int,
+    start_column: int,
+    row_span: int,
+    column_span: int,
+) -> str:
+    """
+    Merge table cells.
+
+    Args:
+        document_id: The ID of the Google Document
+        table_start_index: The index where the table starts
+        start_row: Starting row index (0-based)
+        start_column: Starting column index (0-based)
+        row_span: Number of rows to merge
+        column_span: Number of columns to merge
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    docs = get_docs_client()
+    log(f"Merging table cells at table {table_start_index}, from ({start_row},{start_column}) spanning {row_span}x{column_span}")
+
+    try:
+        request = helpers.build_merge_table_cells_request(
+            table_start_index, start_row, start_column, row_span, column_span
+        )
+
+        helpers.execute_batch_update_sync(docs, document_id, [request])
+
+        return f"Successfully merged {row_span}x{column_span} cells starting at ({start_row},{start_column}) in table at index {table_start_index}."
+
+    except ToolError:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error merging table cells: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document or table not found. Check the document ID and table index.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the document."
+            )
+        if "400" in error_message:
+            raise ToolError(
+                f"Invalid request: {error_message}. Check that the table exists at index {table_start_index} "
+                f"and the merge range is valid."
+            )
+        raise ToolError(f"Failed to merge table cells: {error_message}")
+
+
+def unmerge_table_cells(
+    document_id: str,
+    table_start_index: int,
+    row_index: int,
+    column_index: int,
+) -> str:
+    """
+    Unmerge previously merged table cells.
+
+    Args:
+        document_id: The ID of the Google Document
+        table_start_index: The index where the table starts
+        row_index: Row index (0-based) of the merged cell
+        column_index: Column index (0-based) of the merged cell
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    docs = get_docs_client()
+    log(f"Unmerging table cells at table {table_start_index}, cell ({row_index},{column_index})")
+
+    try:
+        request = helpers.build_unmerge_table_cells_request(
+            table_start_index, row_index, column_index
+        )
+
+        helpers.execute_batch_update_sync(docs, document_id, [request])
+
+        return f"Successfully unmerged cells at ({row_index},{column_index}) in table at index {table_start_index}."
+
+    except ToolError:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error unmerging table cells: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document or table not found. Check the document ID and table index.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the document."
+            )
+        if "400" in error_message:
+            raise ToolError(
+                f"Invalid request: {error_message}. Check that the table exists at index {table_start_index} "
+                f"and cell ({row_index},{column_index}) is merged."
+            )
+        raise ToolError(f"Failed to unmerge table cells: {error_message}")
+
+
+def create_named_range(
+    document_id: str,
+    name: str,
+    start_index: int,
+    end_index: int,
+    tab_id: str | None = None,
+) -> str:
+    """
+    Create a named range for cross-referencing.
+
+    Args:
+        document_id: The ID of the Google Document
+        name: Name for the range
+        start_index: Starting index (inclusive, 1-based)
+        end_index: Ending index (exclusive)
+        tab_id: Optional tab ID
+
+    Returns:
+        Success message with named range ID
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    docs = get_docs_client()
+    log(f"Creating named range '{name}' at range {start_index}-{end_index}")
+
+    try:
+        request = helpers.build_create_named_range_request(
+            name, start_index, end_index, tab_id
+        )
+
+        result = helpers.execute_batch_update_sync(docs, document_id, [request])
+
+        # Extract named range ID from response
+        named_range_id = ""
+        if result and "replies" in result:
+            for reply in result.get("replies", []):
+                if "createNamedRange" in reply:
+                    named_range_id = reply["createNamedRange"].get("namedRangeId", "")
+
+        return f"Successfully created named range '{name}' at range {start_index}-{end_index}. Range ID: {named_range_id}"
+
+    except ToolError:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error creating named range: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document not found. Check the document ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the document."
+            )
+        raise ToolError(f"Failed to create named range: {error_message}")
+
+
+def delete_named_range(
+    document_id: str,
+    named_range_id: str,
+) -> str:
+    """
+    Delete a named range.
+
+    Args:
+        document_id: The ID of the Google Document
+        named_range_id: ID of the named range to delete
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    docs = get_docs_client()
+    log(f"Deleting named range {named_range_id}")
+
+    try:
+        request = helpers.build_delete_named_range_request(named_range_id)
+
+        helpers.execute_batch_update_sync(docs, document_id, [request])
+
+        return f"Successfully deleted named range {named_range_id}."
+
+    except ToolError:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error deleting named range: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document or named range not found. Check the document ID and named range ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the document."
+            )
+        raise ToolError(f"Failed to delete named range: {error_message}")
+
+
+def insert_footnote(
+    document_id: str,
+    index: int,
+    footnote_text: str,
+) -> str:
+    """
+    Insert a footnote at the specified index.
+
+    Args:
+        document_id: The ID of the Google Document
+        index: Index where to insert footnote (1-based)
+        footnote_text: Text content of the footnote
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    docs = get_docs_client()
+    log(f"Inserting footnote at index {index}")
+
+    try:
+        request = helpers.build_insert_footnote_request(index, footnote_text)
+
+        helpers.execute_batch_update_sync(docs, document_id, [request])
+
+        return f"Successfully inserted footnote at index {index}."
+
+    except ToolError:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error inserting footnote: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document not found. Check the document ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the document."
+            )
+        raise ToolError(f"Failed to insert footnote: {error_message}")
+
+
+def insert_table_of_contents(
+    document_id: str,
+    index: int,
+) -> str:
+    """
+    Insert a table of contents at the specified index.
+
+    The table of contents is auto-generated from document headings.
+
+    Args:
+        document_id: The ID of the Google Document
+        index: Index where to insert TOC (1-based)
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    docs = get_docs_client()
+    log(f"Inserting table of contents at index {index}")
+
+    try:
+        request = helpers.build_insert_table_of_contents_request(index)
+
+        helpers.execute_batch_update_sync(docs, document_id, [request])
+
+        return f"Successfully inserted table of contents at index {index}."
+
+    except ToolError:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error inserting table of contents: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document not found. Check the document ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the document."
+            )
+        raise ToolError(f"Failed to insert table of contents: {error_message}")
+
+
+def insert_horizontal_rule(
+    document_id: str,
+    index: int,
+) -> str:
+    """
+    Insert a horizontal rule (divider line) at the specified index.
+
+    Args:
+        document_id: The ID of the Google Document
+        index: Index where to insert rule (1-based)
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    docs = get_docs_client()
+    log(f"Inserting horizontal rule at index {index}")
+
+    try:
+        request = helpers.build_insert_horizontal_rule_request(index)
+
+        helpers.execute_batch_update_sync(docs, document_id, [request])
+
+        return f"Successfully inserted horizontal rule at index {index}."
+
+    except ToolError:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error inserting horizontal rule: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document not found. Check the document ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the document."
+            )
+        raise ToolError(f"Failed to insert horizontal rule: {error_message}")
+
+
+def insert_section_break(
+    document_id: str,
+    index: int,
+    section_type: str = "CONTINUOUS",
+) -> str:
+    """
+    Insert a section break at the specified index.
+
+    Args:
+        document_id: The ID of the Google Document
+        index: Index where to insert section break (1-based)
+        section_type: Type of section break (CONTINUOUS, NEXT_PAGE, EVEN_PAGE, ODD_PAGE)
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    docs = get_docs_client()
+    log(f"Inserting {section_type} section break at index {index}")
+
+    try:
+        request = helpers.build_insert_section_break_request(index, section_type)
+
+        helpers.execute_batch_update_sync(docs, document_id, [request])
+
+        return f"Successfully inserted {section_type} section break at index {index}."
+
+    except ToolError:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error inserting section break: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document not found. Check the document ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the document."
+            )
+        raise ToolError(f"Failed to insert section break: {error_message}")
+
+
+# --- Bulk Operation Preparation Functions for New Operations ---
+
+
+def _prepare_create_bullet_list_request(op_dict: dict, default_tab_id: str | None) -> dict:
+    """Prepare createParagraphBullets request from operation dict."""
+    start_index = op_dict.get("start_index", 1)
+    end_index = op_dict.get("end_index", 1)
+    list_type = op_dict.get("list_type", "UNORDERED")
+    nesting_level = op_dict.get("nesting_level", 0)
+    tab_id = op_dict.get("tab_id", default_tab_id)
+
+    return helpers.build_create_paragraph_bullets_request(
+        start_index, end_index, list_type, nesting_level, tab_id
+    )
+
+
+def _prepare_replace_all_text_request(op_dict: dict, default_tab_id: str | None) -> dict:
+    """Prepare replaceAllText request from operation dict."""
+    find_text = op_dict.get("find_text", "")
+    replace_text = op_dict.get("replace_text", "")
+    match_case = op_dict.get("match_case", True)
+    tab_id = op_dict.get("tab_id", default_tab_id)
+
+    if not find_text:
+        raise ToolError("find_text is required for replace_all_text operation")
+
+    return helpers.build_replace_all_text_request(
+        find_text, replace_text, match_case, tab_id
+    )
+
+
+def _prepare_insert_table_row_request(op_dict: dict) -> dict:
+    """Prepare insertTableRow request from operation dict."""
+    table_start_index = op_dict.get("table_start_index", 1)
+    row_index = op_dict.get("row_index", 0)
+    insert_below = op_dict.get("insert_below", False)
+
+    return helpers.build_insert_table_row_request(
+        table_start_index, row_index, insert_below
+    )
+
+
+def _prepare_delete_table_row_request(op_dict: dict) -> dict:
+    """Prepare deleteTableRow request from operation dict."""
+    table_start_index = op_dict.get("table_start_index", 1)
+    row_index = op_dict.get("row_index", 0)
+
+    return helpers.build_delete_table_row_request(table_start_index, row_index)
+
+
+def _prepare_insert_table_column_request(op_dict: dict) -> dict:
+    """Prepare insertTableColumn request from operation dict."""
+    table_start_index = op_dict.get("table_start_index", 1)
+    column_index = op_dict.get("column_index", 0)
+    insert_right = op_dict.get("insert_right", False)
+
+    return helpers.build_insert_table_column_request(
+        table_start_index, column_index, insert_right
+    )
+
+
+def _prepare_delete_table_column_request(op_dict: dict) -> dict:
+    """Prepare deleteTableColumn request from operation dict."""
+    table_start_index = op_dict.get("table_start_index", 1)
+    column_index = op_dict.get("column_index", 0)
+
+    return helpers.build_delete_table_column_request(table_start_index, column_index)
+
+
+def _prepare_update_table_cell_style_request(op_dict: dict) -> dict | None:
+    """Prepare updateTableCellStyle request from operation dict."""
+    table_start_index = op_dict.get("table_start_index", 1)
+    row_index = op_dict.get("row_index", 0)
+    column_index = op_dict.get("column_index", 0)
+
+    return helpers.build_update_table_cell_style_request(
+        table_start_index,
+        row_index,
+        column_index,
+        background_color=op_dict.get("background_color"),
+        padding_top=op_dict.get("padding_top"),
+        padding_bottom=op_dict.get("padding_bottom"),
+        padding_left=op_dict.get("padding_left"),
+        padding_right=op_dict.get("padding_right"),
+        border_top_color=op_dict.get("border_top_color"),
+        border_top_width=op_dict.get("border_top_width"),
+        border_bottom_color=op_dict.get("border_bottom_color"),
+        border_bottom_width=op_dict.get("border_bottom_width"),
+        border_left_color=op_dict.get("border_left_color"),
+        border_left_width=op_dict.get("border_left_width"),
+        border_right_color=op_dict.get("border_right_color"),
+        border_right_width=op_dict.get("border_right_width"),
+    )
+
+
+def _prepare_merge_table_cells_request(op_dict: dict) -> dict:
+    """Prepare mergeTableCells request from operation dict."""
+    table_start_index = op_dict.get("table_start_index", 1)
+    start_row = op_dict.get("start_row", 0)
+    start_column = op_dict.get("start_column", 0)
+    row_span = op_dict.get("row_span", 1)
+    column_span = op_dict.get("column_span", 1)
+
+    return helpers.build_merge_table_cells_request(
+        table_start_index, start_row, start_column, row_span, column_span
+    )
+
+
+def _prepare_unmerge_table_cells_request(op_dict: dict) -> dict:
+    """Prepare unmergeTableCells request from operation dict."""
+    table_start_index = op_dict.get("table_start_index", 1)
+    row_index = op_dict.get("row_index", 0)
+    column_index = op_dict.get("column_index", 0)
+
+    return helpers.build_unmerge_table_cells_request(
+        table_start_index, row_index, column_index
+    )
+
+
+def _prepare_create_named_range_request(op_dict: dict, default_tab_id: str | None) -> dict:
+    """Prepare createNamedRange request from operation dict."""
+    name = op_dict.get("name", "")
+    start_index = op_dict.get("start_index", 1)
+    end_index = op_dict.get("end_index", 1)
+    tab_id = op_dict.get("tab_id", default_tab_id)
+
+    if not name:
+        raise ToolError("name is required for create_named_range operation")
+
+    return helpers.build_create_named_range_request(
+        name, start_index, end_index, tab_id
+    )
+
+
+def _prepare_delete_named_range_request(op_dict: dict) -> dict:
+    """Prepare deleteNamedRange request from operation dict."""
+    named_range_id = op_dict.get("named_range_id", "")
+
+    if not named_range_id:
+        raise ToolError("named_range_id is required for delete_named_range operation")
+
+    return helpers.build_delete_named_range_request(named_range_id)
+
+
+def _prepare_insert_footnote_request(op_dict: dict) -> dict:
+    """Prepare insertFootnote request from operation dict."""
+    index = op_dict.get("index", 1)
+    footnote_text = op_dict.get("footnote_text", "")
+
+    return helpers.build_insert_footnote_request(index, footnote_text)
+
+
+def _prepare_insert_table_of_contents_request(op_dict: dict) -> dict:
+    """Prepare insertTableOfContents request from operation dict."""
+    index = op_dict.get("index", 1)
+
+    return helpers.build_insert_table_of_contents_request(index)
+
+
+def _prepare_insert_horizontal_rule_request(op_dict: dict) -> dict:
+    """Prepare insertHorizontalRule request from operation dict."""
+    index = op_dict.get("index", 1)
+
+    return helpers.build_insert_horizontal_rule_request(index)
+
+
+def _prepare_insert_section_break_request(op_dict: dict) -> dict:
+    """Prepare insertSectionBreak request from operation dict."""
+    index = op_dict.get("index", 1)
+    section_type = op_dict.get("section_type", "CONTINUOUS")
+
+    return helpers.build_insert_section_break_request(index, section_type)

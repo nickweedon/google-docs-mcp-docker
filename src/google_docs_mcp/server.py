@@ -674,6 +674,451 @@ def insert_image_from_resource(
     return resources.insert_image_from_resource(document_id, resource_id, index, width, height)
 
 
+# === NEW DOCUMENT OPERATIONS ===
+
+
+@mcp.tool()
+def create_bullet_list(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    start_index: Annotated[int, "Starting index of the range (inclusive, 1-based)"],
+    end_index: Annotated[int, "Ending index of the range (exclusive)"],
+    list_type: Annotated[
+        str,
+        "Type of list: 'UNORDERED' (bullets), 'ORDERED_DECIMAL' (1,2,3), 'ORDERED_ALPHA' (a,b,c), 'ORDERED_ROMAN' (i,ii,iii)"
+    ] = "UNORDERED",
+    nesting_level: Annotated[int, "Nesting level (0-8, where 0 is top level)"] = 0,
+    tab_id: Annotated[str | None, "Optional tab ID to target specific tab"] = None,
+) -> str:
+    """
+    Create a bulleted or numbered list from a range of paragraphs.
+
+    Converts existing paragraphs within the specified range into a list.
+    To create a nested list, use different nesting levels.
+    """
+    return documents.create_bullet_list(
+        document_id, start_index, end_index, list_type, nesting_level, tab_id
+    )
+
+
+@mcp.tool()
+def replace_all_text(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    find_text: Annotated[str, "The text to find"],
+    replace_text: Annotated[str, "The text to replace it with"],
+    match_case: Annotated[bool, "Whether to match case when finding"] = True,
+    tab_id: Annotated[str | None, "Optional tab ID to limit replacement to specific tab"] = None,
+) -> str:
+    """
+    Find and replace all instances of text in the document.
+
+    This replaces ALL occurrences of the find text with the replacement text.
+    """
+    return documents.replace_all_text(
+        document_id, find_text, replace_text, match_case, tab_id
+    )
+
+
+@mcp.tool()
+def insert_table_row(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    table_start_index: Annotated[int, "The index where the table starts"],
+    row_index: Annotated[int, "The row index (0-based) where to insert"],
+    insert_below: Annotated[bool, "True to insert below the row, False to insert above"] = False,
+) -> str:
+    """
+    Insert a new row into an existing table.
+
+    The table_start_index is the document index where the table begins.
+    Row indices are 0-based (0 is the first row).
+    """
+    return documents.insert_table_row(
+        document_id, table_start_index, row_index, insert_below
+    )
+
+
+@mcp.tool()
+def delete_table_row(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    table_start_index: Annotated[int, "The index where the table starts"],
+    row_index: Annotated[int, "The row index (0-based) to delete"],
+) -> str:
+    """
+    Delete a row from an existing table.
+    """
+    return documents.delete_table_row(document_id, table_start_index, row_index)
+
+
+@mcp.tool()
+def insert_table_column(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    table_start_index: Annotated[int, "The index where the table starts"],
+    column_index: Annotated[int, "The column index (0-based) where to insert"],
+    insert_right: Annotated[bool, "True to insert right of column, False to insert left"] = False,
+) -> str:
+    """
+    Insert a new column into an existing table.
+
+    Column indices are 0-based (0 is the first column).
+    """
+    return documents.insert_table_column(
+        document_id, table_start_index, column_index, insert_right
+    )
+
+
+@mcp.tool()
+def delete_table_column(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    table_start_index: Annotated[int, "The index where the table starts"],
+    column_index: Annotated[int, "The column index (0-based) to delete"],
+) -> str:
+    """
+    Delete a column from an existing table.
+    """
+    return documents.delete_table_column(document_id, table_start_index, column_index)
+
+
+@mcp.tool()
+def update_table_cell_style(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    table_start_index: Annotated[int, "The index where the table starts"],
+    row_index: Annotated[int, "Row index (0-based)"],
+    column_index: Annotated[int, "Column index (0-based)"],
+    background_color: Annotated[str | None, "Background color in hex format (e.g., '#FF0000')"] = None,
+    padding_top: Annotated[float | None, "Top padding in points"] = None,
+    padding_bottom: Annotated[float | None, "Bottom padding in points"] = None,
+    padding_left: Annotated[float | None, "Left padding in points"] = None,
+    padding_right: Annotated[float | None, "Right padding in points"] = None,
+    border_top_color: Annotated[str | None, "Top border color in hex format"] = None,
+    border_top_width: Annotated[float | None, "Top border width in points"] = None,
+    border_bottom_color: Annotated[str | None, "Bottom border color in hex format"] = None,
+    border_bottom_width: Annotated[float | None, "Bottom border width in points"] = None,
+    border_left_color: Annotated[str | None, "Left border color in hex format"] = None,
+    border_left_width: Annotated[float | None, "Left border width in points"] = None,
+    border_right_color: Annotated[str | None, "Right border color in hex format"] = None,
+    border_right_width: Annotated[float | None, "Right border width in points"] = None,
+) -> str:
+    """
+    Style a table cell (background, padding, borders).
+
+    Cell positions are 0-based. Provide at least one style property.
+    """
+    return documents.update_table_cell_style(
+        document_id,
+        table_start_index,
+        row_index,
+        column_index,
+        background_color,
+        padding_top,
+        padding_bottom,
+        padding_left,
+        padding_right,
+        border_top_color,
+        border_top_width,
+        border_bottom_color,
+        border_bottom_width,
+        border_left_color,
+        border_left_width,
+        border_right_color,
+        border_right_width,
+    )
+
+
+@mcp.tool()
+def merge_table_cells(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    table_start_index: Annotated[int, "The index where the table starts"],
+    start_row: Annotated[int, "Starting row index (0-based)"],
+    start_column: Annotated[int, "Starting column index (0-based)"],
+    row_span: Annotated[int, "Number of rows to merge"],
+    column_span: Annotated[int, "Number of columns to merge"],
+) -> str:
+    """
+    Merge table cells into a single cell.
+
+    Creates a merged cell starting at (start_row, start_column) spanning
+    the specified number of rows and columns.
+    """
+    return documents.merge_table_cells(
+        document_id, table_start_index, start_row, start_column, row_span, column_span
+    )
+
+
+@mcp.tool()
+def unmerge_table_cells(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    table_start_index: Annotated[int, "The index where the table starts"],
+    row_index: Annotated[int, "Row index (0-based) of the merged cell"],
+    column_index: Annotated[int, "Column index (0-based) of the merged cell"],
+) -> str:
+    """
+    Unmerge previously merged table cells.
+
+    Splits a merged cell back into individual cells.
+    """
+    return documents.unmerge_table_cells(
+        document_id, table_start_index, row_index, column_index
+    )
+
+
+@mcp.tool()
+def create_named_range(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    name: Annotated[str, "Name for the range"],
+    start_index: Annotated[int, "Starting index (inclusive, 1-based)"],
+    end_index: Annotated[int, "Ending index (exclusive)"],
+    tab_id: Annotated[str | None, "Optional tab ID"] = None,
+) -> str:
+    """
+    Create a named range for cross-referencing.
+
+    Named ranges allow you to reference specific portions of a document by name
+    instead of by index positions.
+    """
+    return documents.create_named_range(
+        document_id, name, start_index, end_index, tab_id
+    )
+
+
+@mcp.tool()
+def delete_named_range(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    named_range_id: Annotated[str, "ID of the named range to delete"],
+) -> str:
+    """
+    Delete a named range.
+
+    The named range ID is returned when creating a named range.
+    """
+    return documents.delete_named_range(document_id, named_range_id)
+
+
+@mcp.tool()
+def insert_footnote(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    index: Annotated[int, "Index where to insert footnote (1-based)"],
+    footnote_text: Annotated[str, "Text content of the footnote"],
+) -> str:
+    """
+    Insert a footnote at the specified index.
+
+    Footnotes appear at the bottom of the page and are automatically numbered.
+    """
+    return documents.insert_footnote(document_id, index, footnote_text)
+
+
+@mcp.tool()
+def insert_table_of_contents(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    index: Annotated[int, "Index where to insert TOC (1-based)"],
+) -> str:
+    """
+    Insert a table of contents at the specified index.
+
+    The table of contents is auto-generated from document headings (HEADING_1 through HEADING_6).
+    It updates automatically when headings change.
+    """
+    return documents.insert_table_of_contents(document_id, index)
+
+
+@mcp.tool()
+def insert_horizontal_rule(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    index: Annotated[int, "Index where to insert rule (1-based)"],
+) -> str:
+    """
+    Insert a horizontal rule (divider line) at the specified index.
+
+    Horizontal rules are useful for visually separating sections of content.
+    """
+    return documents.insert_horizontal_rule(document_id, index)
+
+
+@mcp.tool()
+def insert_section_break(
+    document_id: Annotated[str, "The ID of the Google Document"],
+    index: Annotated[int, "Index where to insert section break (1-based)"],
+    section_type: Annotated[
+        str,
+        "Type of section break: 'CONTINUOUS', 'NEXT_PAGE', 'EVEN_PAGE', 'ODD_PAGE'"
+    ] = "CONTINUOUS",
+) -> str:
+    """
+    Insert a section break at the specified index.
+
+    Section breaks allow different page layouts in different sections of the document.
+    - CONTINUOUS: New section on same page
+    - NEXT_PAGE: New section on next page
+    - EVEN_PAGE: New section on next even page
+    - ODD_PAGE: New section on next odd page
+    """
+    return documents.insert_section_break(document_id, index, section_type)
+
+
+# === NEW DRIVE FILE MANAGEMENT ===
+
+
+@mcp.tool()
+def move_file(
+    file_id: Annotated[str, "The ID of the file to move"],
+    new_parent_folder_id: Annotated[str, "The ID of the destination folder"],
+    remove_from_current_parents: Annotated[
+        bool, "Whether to remove from current parent folders"
+    ] = True,
+) -> str:
+    """
+    Move a file to a different folder in Google Drive.
+
+    By default, removes the file from all current parent folders.
+    Set remove_from_current_parents=False to keep the file in multiple locations.
+    """
+    return drive.move_file(file_id, new_parent_folder_id, remove_from_current_parents)
+
+
+@mcp.tool()
+def copy_file(
+    file_id: Annotated[str, "The ID of the file to copy"],
+    new_name: Annotated[
+        str | None, "Name for the copy (if not provided, uses 'Copy of [original name]')"
+    ] = None,
+    parent_folder_id: Annotated[
+        str | None, "Parent folder ID for the copy (if not provided, uses same folder)"
+    ] = None,
+) -> str:
+    """
+    Create a copy of a file in Google Drive.
+
+    Returns the new file's ID and web link.
+    """
+    return drive.copy_file(file_id, new_name, parent_folder_id)
+
+
+@mcp.tool()
+def trash_file(
+    file_id: Annotated[str, "The ID of the file to trash"],
+) -> str:
+    """
+    Move a file to trash.
+
+    The file can be restored using restore_file.
+    """
+    return drive.trash_file(file_id)
+
+
+@mcp.tool()
+def restore_file(
+    file_id: Annotated[str, "The ID of the file to restore"],
+) -> str:
+    """
+    Restore a file from trash.
+
+    The file will be restored to its original location.
+    """
+    return drive.restore_file(file_id)
+
+
+@mcp.tool(annotations={"destructiveHint": True})
+def permanently_delete_file(
+    file_id: Annotated[str, "The ID of the file to delete"],
+) -> str:
+    """
+    Permanently delete a file (cannot be recovered).
+
+    WARNING: This action cannot be undone. The file will be permanently deleted.
+    """
+    return drive.permanently_delete_file(file_id)
+
+
+@mcp.tool()
+def star_file(
+    file_id: Annotated[str, "The ID of the file to star"],
+) -> str:
+    """
+    Star/favorite a file in Google Drive.
+
+    Starred files appear in the "Starred" section for easy access.
+    """
+    return drive.star_file(file_id)
+
+
+@mcp.tool()
+def unstar_file(
+    file_id: Annotated[str, "The ID of the file to unstar"],
+) -> str:
+    """
+    Remove star from a file in Google Drive.
+    """
+    return drive.unstar_file(file_id)
+
+
+# === NEW DRIVE PERMISSIONS MANAGEMENT ===
+
+
+@mcp.tool()
+def share_document(
+    document_id: Annotated[str, "The ID of the document to share"],
+    email_address: Annotated[str, "Email address of the user to share with"],
+    role: Annotated[
+        str, "Permission role: 'reader', 'writer', or 'commenter'"
+    ] = "reader",
+    send_notification_email: Annotated[
+        bool, "Whether to send an email notification to the user"
+    ] = True,
+    email_message: Annotated[
+        str | None, "Optional custom message for the notification email"
+    ] = None,
+) -> str:
+    """
+    Share a Google Document with a specific user.
+
+    Grants the specified permission level (reader, writer, or commenter) to the user.
+    Optionally sends an email notification with a custom message.
+    """
+    return drive.share_document(
+        document_id, email_address, role, send_notification_email, email_message
+    )
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+def list_permissions(
+    document_id: Annotated[str, "The ID of the document"],
+) -> str:
+    """
+    List all permissions on a document.
+
+    Shows who has access to the document and their permission levels.
+    """
+    return drive.list_permissions(document_id)
+
+
+@mcp.tool()
+def remove_permission(
+    document_id: Annotated[str, "The ID of the document"],
+    permission_id: Annotated[str, "The ID of the permission to remove"],
+) -> str:
+    """
+    Remove a user's access to a document.
+
+    The permission ID can be obtained from list_permissions.
+    """
+    return drive.remove_permission(document_id, permission_id)
+
+
+@mcp.tool()
+def update_permission(
+    document_id: Annotated[str, "The ID of the document"],
+    permission_id: Annotated[str, "The ID of the permission to update"],
+    new_role: Annotated[
+        str, "New permission role: 'reader', 'writer', or 'commenter'"
+    ],
+) -> str:
+    """
+    Change a permission's role.
+
+    The permission ID can be obtained from list_permissions.
+    """
+    return drive.update_permission(document_id, permission_id, new_role)
+
+
 def main() -> None:
     """Run the Google Docs MCP Server."""
     log("Starting Google Docs MCP Server...")

@@ -13,13 +13,14 @@ services:
     volumes:
       - ./credentials:/workspace/credentials
       - blob-storage:/mnt/blob-storage
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker socket for port discovery
 
     stdin_open: true
     tty: true
 
-    # Expose port for OAuth loopback callback
+    # Expose port for OAuth loopback callback (ephemeral host port)
     ports:
-      - "3000:3000"
+      - "3000"  # Let Docker choose host port dynamically
 
     # Restart policy
     restart: unless-stopped

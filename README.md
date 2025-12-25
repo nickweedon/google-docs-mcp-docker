@@ -91,42 +91,50 @@ docker-compose build
 
 ### Step 4: Authenticate with Google (First-Time Setup)
 
-The first time you run the server, you need to authenticate with Google to generate a token. The authentication uses a loopback OAuth flow - the container starts a temporary web server on port 3000 to receive the OAuth callback.
+The first time you run the server, you need to authenticate with Google to generate a token. The authentication uses a loopback OAuth flow with **automatic port discovery**.
+
+**How it works:**
+- The container discovers its published port via Docker API
+- OAuth callback redirects to the discovered host port automatically
+- No manual port configuration needed
 
 **Important:** Create an empty token.json file before running if it doesn't exist:
 ```bash
 touch credentials/token.json
 ```
 
-Run the container with port 3000 exposed:
+Run the container (Docker will assign an ephemeral port automatically):
 
 ```bash
 docker run -it --rm \
-  -p 3000:3000 \
+  -p 3000 \
   -v $(pwd)/credentials:/workspace/credentials \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
   workspace-google-docs-mcp:latest
 ```
 
 **Note:** On Windows, use full paths instead of `$(pwd)`:
 ```bash
 docker run -it --rm ^
-  -p 3000:3000 ^
+  -p 3000 ^
   -v C:/path/to/google-docs-mcp/credentials:/workspace/credentials ^
+  -v /var/run/docker.sock:/var/run/docker.sock:ro ^
   workspace-google-docs-mcp:latest
 ```
 
-1. The server will output an authorization URL
-2. Copy the URL and open it in your browser
-3. Log in with your Google account (the one added as a Test User)
-4. Click "Allow" to grant permissions
-5. Google will redirect to `http://localhost:3000` - the container captures this automatically
-6. You'll see "Authentication Successful!" in your browser
-7. The `token.json` file will be saved to your `credentials/` directory
-8. Press Ctrl+C to stop the container
+1. The container will detect its published port via Docker API and display it in the logs
+2. The server will output an authorization URL
+3. Copy the URL and open it in your browser
+4. Log in with your Google account (the one added as a Test User)
+5. Click "Allow" to grant permissions
+6. Google will redirect to the discovered port - the container captures this automatically
+7. You'll see "Authentication Successful!" in your browser
+8. The `token.json` file will be saved to your `credentials/` directory
+9. Press Ctrl+C to stop the container
 
-Alternatively, use docker-compose with the auth profile:
+Alternatively, use docker-compose:
 ```bash
-docker-compose --profile auth run --rm -p 3000:3000 auth
+docker-compose up
 ```
 
 ### Step 5: Run the Server
@@ -159,9 +167,11 @@ Run the MCP server in a Docker container. This requires mounting the credentials
         "-i",
         "--rm",
         "-p",
-        "3000:3000",
+        "3000",
         "-v",
         "C:/path/to/google-docs-mcp/credentials:/workspace/credentials",
+        "-v",
+        "/var/run/docker.sock:/var/run/docker.sock:ro",
         "-v",
         "blob-storage:/mnt/blob-storage",
         "-e",
@@ -178,9 +188,13 @@ Run the MCP server in a Docker container. This requires mounting the credentials
 ```
 
 **Configuration notes:**
-- `-p 3000:3000` - Exposes port 3000 for OAuth token refresh callbacks
+- `-p 3000` - Ephemeral port binding (Docker assigns available host port automatically)
 - The first `-v` mount maps your local `credentials/` directory (containing both `credentials.json` and `token.json`) to `/workspace/credentials/` in the container
-- The second `-v` mount creates a shared blob storage volume for resource-based file uploads (optional, only needed if using resource-based upload features)
+- The second `-v` mount provides Docker socket access for automatic port discovery
+  - **Windows:** Docker Desktop automatically translates `/var/run/docker.sock` to the Windows named pipe
+  - **Linux/macOS:** Uses the native Docker socket at `/var/run/docker.sock`
+  - **Important:** Ensure "Expose daemon on tcp://localhost:2375 without TLS" is NOT enabled in Docker Desktop settings (it's a security risk and not needed)
+- The third `-v` mount creates a shared blob storage volume for resource-based file uploads (optional, only needed if using resource-based upload features)
 - The `-e` flags set environment variables for blob storage configuration (optional, defaults shown)
 
 **Note:** Adjust the path (`C:/path/to/google-docs-mcp/credentials`) to match your local credentials directory. On Linux/macOS, use Unix-style paths (e.g., `/home/user/google-docs-mcp/credentials`).
@@ -265,6 +279,59 @@ uv run google-docs-mcp
 # Run tests
 uv run pytest
 ```
+
+## OAuth Port Discovery
+
+This server uses Docker API to automatically discover its published port for OAuth callbacks. This enables:
+
+- **Ephemeral port bindings** - Docker can assign any available host port
+- **No port conflicts** - Multiple instances can run simultaneously
+- **Automatic configuration** - No manual port setup required
+
+### How It Works
+
+1. **Container starts** with ephemeral port binding (e.g., `-p 3000`)
+2. **Docker assigns** an available host port (e.g., 32768)
+3. **Server discovers** the mapping via Docker API (reads `/proc/self/cgroup` and queries Docker socket)
+4. **OAuth redirect URI** uses the discovered host port (`http://localhost:32768`)
+5. **Authentication succeeds** automatically
+
+### Requirements
+
+- Docker socket must be mounted: `-v /var/run/docker.sock:/var/run/docker.sock:ro`
+- Python `docker` package must be installed (included in dependencies)
+
+### Fallback Behavior
+
+If Docker API is unavailable (socket not mounted or not running in Docker):
+- Falls back to default port 3000
+- Logs a warning to stderr
+- Continues normally with static port
+
+### Troubleshooting
+
+**"Docker API unavailable" or "Connection aborted" error:**
+
+*Windows with Docker Desktop:*
+1. Ensure Docker Desktop is running and fully started
+2. In Docker Desktop Settings → General, verify "Expose daemon on tcp://localhost:2375 without TLS" is **OFF** (unchecked)
+3. The socket mount `-v /var/run/docker.sock:/var/run/docker.sock:ro` should work automatically (Docker Desktop translates it)
+4. If the error persists, try restarting Docker Desktop
+5. As a workaround, you can omit the Docker socket mount - the server will fall back to port 3000 (but you'll need to use `-p 3000:3000` instead of `-p 3000`)
+
+*Linux/macOS:*
+- Ensure Docker socket is mounted in your configuration
+- Check socket permissions: `ls -l /var/run/docker.sock`
+- Add your user to the docker group: `sudo usermod -aG docker $USER` (then log out and back in)
+
+**"No port mapping found" warning:**
+- Verify port is published in docker run/compose configuration
+- Check with: `docker port <container_name>`
+
+**Authentication still fails:**
+- Check container logs: `docker logs <container_name>`
+- Verify OAuth credentials in Google Cloud Console
+- Ensure redirect URI matches what Google expects
 
 ## Commands
 

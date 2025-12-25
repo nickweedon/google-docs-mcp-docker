@@ -19,6 +19,7 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
 from google_docs_mcp.utils import log
+from google_docs_mcp.utils.docker import discover_oauth_port
 
 # Scopes required for Google Docs and Drive access
 SCOPES = [
@@ -26,8 +27,30 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-# OAuth loopback port
-LOOPBACK_PORT = 3000
+# OAuth loopback port - discovered at runtime in Docker environments
+_CONTAINER_PORT = 3000  # Port inside container (never changes)
+_discovered_host_port = None  # Cached discovered port
+
+
+def get_oauth_port() -> int:
+    """
+    Get the OAuth loopback port (host port in Docker, container port otherwise).
+
+    In Docker environments with ephemeral port bindings, this discovers the
+    host port via Docker API. Otherwise, returns the default container port.
+
+    Results are cached after first discovery.
+
+    Returns:
+        OAuth port number to use for redirect URI
+    """
+    global _discovered_host_port
+
+    if _discovered_host_port is not None:
+        return _discovered_host_port
+
+    _discovered_host_port = discover_oauth_port(_CONTAINER_PORT)
+    return _discovered_host_port
 
 # Calculate paths for credentials
 # In Docker: /workspace/credentials/
@@ -93,7 +116,7 @@ def _wait_for_auth_code(port: int, timeout: int = 300) -> str:
     Start a temporary HTTP server and wait for OAuth callback.
 
     Args:
-        port: Port to listen on
+        port: Port to listen on (container port)
         timeout: Timeout in seconds (default 5 minutes)
 
     Returns:
@@ -107,7 +130,10 @@ def _wait_for_auth_code(port: int, timeout: int = 300) -> str:
     server.auth_error = None
     server.timeout = timeout
 
-    log(f"Listening for OAuth callback on http://localhost:{port}")
+    oauth_port = get_oauth_port()
+    log(f"Listening for OAuth callback on http://localhost:{oauth_port}")
+    if oauth_port != port:
+        log(f"(Container port {port} mapped to host port {oauth_port})")
 
     # Use a simple loop with timeout
     server.handle_request()
@@ -232,7 +258,8 @@ def _authenticate() -> Credentials:
     Raises:
         Exception: If authentication fails
     """
-    redirect_uri = f"http://localhost:{LOOPBACK_PORT}"
+    oauth_port = get_oauth_port()
+    redirect_uri = f"http://localhost:{oauth_port}"
     log(f"Using loopback OAuth flow with redirect URI: {redirect_uri}")
 
     # Create flow from client secrets file
@@ -251,7 +278,7 @@ def _authenticate() -> Credentials:
     log("=" * 60 + "\n")
 
     # Wait for callback
-    code = _wait_for_auth_code(LOOPBACK_PORT)
+    code = _wait_for_auth_code(_CONTAINER_PORT)
     log("Received authorization code, exchanging for tokens...")
 
     try:

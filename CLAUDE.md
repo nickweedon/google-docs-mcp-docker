@@ -74,14 +74,41 @@ google-docs-mcp/
 
 ### Authentication Methods
 
-1. **OAuth2 (Default)**: Uses loopback flow on port 3000
+1. **OAuth2 (Default)**: Uses loopback flow with automatic port discovery
    - Requires `credentials.json` with OAuth client config
    - Stores tokens in `token.json`
    - User must authorize via browser
+   - Automatically discovers published port via Docker API when available
 
 2. **Service Account**: Set `SERVICE_ACCOUNT_PATH` environment variable
    - For automated/server environments
    - No browser interaction needed
+
+### OAuth Loopback Port Discovery
+
+The server uses Docker API to automatically discover its published port for OAuth callbacks:
+
+**Architecture:**
+- Container HTTP server listens on `0.0.0.0:3000` (always)
+- Docker maps to ephemeral host port (e.g., `32768`)
+- Container discovers mapping via Docker API at runtime
+- OAuth redirect URI uses discovered host port
+
+**Implementation:**
+- `utils/docker.py` - Docker API integration and port discovery
+- `auth.py` - Port discovery and OAuth flow integration
+- Container ID extracted from `/proc/self/cgroup` or `/proc/self/mountinfo`
+- Port mapping queried via Docker SDK for Python
+
+**Requirements:**
+- Docker socket mounted: `/var/run/docker.sock:/var/run/docker.sock:ro`
+- `docker` Python package in dependencies
+- Ephemeral port binding in compose: `ports: ["3000"]`
+
+**Fallback:**
+- If Docker API unavailable, falls back to port 3000
+- Logs all discovery attempts to stderr
+- Never crashes due to port discovery failures
 
 ### MCP Protocol Compatibility
 
@@ -258,6 +285,7 @@ docker-compose up --build
 | `BLOB_STORAGE_ROOT` | Optional: Path to blob storage directory for resource-based file operations (required if using resource-based tools) |
 | `BLOB_STORAGE_MAX_SIZE_MB` | Optional: Maximum file size in MB for blob storage (default: 100) |
 | `BLOB_STORAGE_TTL_HOURS` | Optional: Time-to-live for blobs in hours, controls automatic cleanup (default: 24) |
+| `CONTAINER_NAME` | Optional: Container name for logging (auto-detected from Docker API) |
 
 ## Testing
 

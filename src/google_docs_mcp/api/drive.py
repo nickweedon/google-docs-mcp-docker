@@ -720,3 +720,514 @@ def create_google_doc_from_markdown(
         if "403" in error_message:
             raise ToolError("Permission denied. Make sure you have write access to Drive.")
         raise ToolError(f"Failed to create document from markdown: {error_message}")
+
+
+# --- New Drive File Management Operations ---
+
+
+def move_file(
+    file_id: str,
+    new_parent_folder_id: str,
+    remove_from_current_parents: bool = True,
+) -> str:
+    """
+    Move a file to a different folder.
+
+    Args:
+        file_id: The ID of the file to move
+        new_parent_folder_id: The ID of the destination folder
+        remove_from_current_parents: Whether to remove from current folders
+
+    Returns:
+        Success message with new location
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    drive = get_drive_client()
+    log(f"Moving file {file_id} to folder {new_parent_folder_id}")
+
+    try:
+        # Get current parents if needed
+        current_parents = None
+        if remove_from_current_parents:
+            file_metadata = drive.files().get(
+                fileId=file_id,
+                fields="parents"
+            ).execute()
+            current_parents = ",".join(file_metadata.get("parents", []))
+
+        # Move file
+        update_params = {
+            "fileId": file_id,
+            "addParents": new_parent_folder_id,
+            "fields": "id,name,parents"
+        }
+
+        if current_parents:
+            update_params["removeParents"] = current_parents
+
+        response = drive.files().update(**update_params).execute()
+
+        return (
+            f"Successfully moved file \"{response.get('name')}\" "
+            f"to folder {new_parent_folder_id}\n"
+            f"File ID: {response.get('id')}"
+        )
+
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error moving file: {error_message}")
+        if "404" in error_message:
+            raise ToolError("File or folder not found. Check the file ID and folder ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the file and folder."
+            )
+        raise ToolError(f"Failed to move file: {error_message}")
+
+
+def copy_file(
+    file_id: str,
+    new_name: str | None = None,
+    parent_folder_id: str | None = None,
+) -> str:
+    """
+    Create a copy of a file.
+
+    Args:
+        file_id: The ID of the file to copy
+        new_name: Name for the copy (if not provided, uses "Copy of [original name]")
+        parent_folder_id: Parent folder ID for the copy (if not provided, uses same folder)
+
+    Returns:
+        Success message with copy details
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    drive = get_drive_client()
+    log(f"Copying file {file_id}")
+
+    try:
+        body = {}
+        if new_name:
+            body["name"] = new_name
+        if parent_folder_id:
+            body["parents"] = [parent_folder_id]
+
+        response = drive.files().copy(
+            fileId=file_id,
+            body=body,
+            fields="id,name,webViewLink"
+        ).execute()
+
+        return (
+            f"Successfully created copy: \"{response.get('name')}\"\n"
+            f"File ID: {response.get('id')}\n"
+            f"Link: {response.get('webViewLink')}"
+        )
+
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error copying file: {error_message}")
+        if "404" in error_message:
+            raise ToolError("File not found. Check the file ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have read access to the file."
+            )
+        raise ToolError(f"Failed to copy file: {error_message}")
+
+
+def trash_file(file_id: str) -> str:
+    """
+    Move a file to trash.
+
+    Args:
+        file_id: The ID of the file to trash
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    drive = get_drive_client()
+    log(f"Trashing file {file_id}")
+
+    try:
+        response = drive.files().update(
+            fileId=file_id,
+            body={"trashed": True},
+            fields="id,name,trashed"
+        ).execute()
+
+        return f"Successfully moved \"{response.get('name')}\" to trash. File ID: {file_id}"
+
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error trashing file: {error_message}")
+        if "404" in error_message:
+            raise ToolError("File not found. Check the file ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the file."
+            )
+        raise ToolError(f"Failed to trash file: {error_message}")
+
+
+def restore_file(file_id: str) -> str:
+    """
+    Restore a file from trash.
+
+    Args:
+        file_id: The ID of the file to restore
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    drive = get_drive_client()
+    log(f"Restoring file {file_id} from trash")
+
+    try:
+        response = drive.files().update(
+            fileId=file_id,
+            body={"trashed": False},
+            fields="id,name,trashed"
+        ).execute()
+
+        return f"Successfully restored \"{response.get('name')}\" from trash. File ID: {file_id}"
+
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error restoring file: {error_message}")
+        if "404" in error_message:
+            raise ToolError("File not found. Check the file ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the file."
+            )
+        raise ToolError(f"Failed to restore file: {error_message}")
+
+
+def permanently_delete_file(file_id: str) -> str:
+    """
+    Permanently delete a file (cannot be recovered).
+
+    Args:
+        file_id: The ID of the file to delete
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    drive = get_drive_client()
+    log(f"Permanently deleting file {file_id}")
+
+    try:
+        drive.files().delete(fileId=file_id).execute()
+
+        return f"Successfully permanently deleted file {file_id}. This action cannot be undone."
+
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error deleting file: {error_message}")
+        if "404" in error_message:
+            raise ToolError("File not found. Check the file ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have edit access to the file."
+            )
+        raise ToolError(f"Failed to delete file: {error_message}")
+
+
+def star_file(file_id: str) -> str:
+    """
+    Star/favorite a file.
+
+    Args:
+        file_id: The ID of the file to star
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    drive = get_drive_client()
+    log(f"Starring file {file_id}")
+
+    try:
+        response = drive.files().update(
+            fileId=file_id,
+            body={"starred": True},
+            fields="id,name,starred"
+        ).execute()
+
+        return f"Successfully starred \"{response.get('name')}\". File ID: {file_id}"
+
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error starring file: {error_message}")
+        if "404" in error_message:
+            raise ToolError("File not found. Check the file ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have access to the file."
+            )
+        raise ToolError(f"Failed to star file: {error_message}")
+
+
+def unstar_file(file_id: str) -> str:
+    """
+    Remove star from a file.
+
+    Args:
+        file_id: The ID of the file to unstar
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    drive = get_drive_client()
+    log(f"Unstarring file {file_id}")
+
+    try:
+        response = drive.files().update(
+            fileId=file_id,
+            body={"starred": False},
+            fields="id,name,starred"
+        ).execute()
+
+        return f"Successfully unstarred \"{response.get('name')}\". File ID: {file_id}"
+
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error unstarring file: {error_message}")
+        if "404" in error_message:
+            raise ToolError("File not found. Check the file ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have access to the file."
+            )
+        raise ToolError(f"Failed to unstar file: {error_message}")
+
+
+# --- Drive Permissions Management ---
+
+
+def share_document(
+    document_id: str,
+    email_address: str,
+    role: str = "reader",
+    send_notification_email: bool = True,
+    email_message: str | None = None,
+) -> str:
+    """
+    Share a document with a specific user.
+
+    Args:
+        document_id: The ID of the document to share
+        email_address: Email address of the user to share with
+        role: Permission role ("reader", "writer", "commenter")
+        send_notification_email: Whether to send email notification
+        email_message: Optional custom message for notification
+
+    Returns:
+        Success message with permission details
+
+    Raises:
+        ToolError: For permission errors or invalid email
+    """
+    drive = get_drive_client()
+    log(f"Sharing document {document_id} with {email_address} as {role}")
+
+    try:
+        permission = {
+            "type": "user",
+            "role": role,
+            "emailAddress": email_address
+        }
+
+        create_params = {
+            "fileId": document_id,
+            "body": permission,
+            "sendNotificationEmail": send_notification_email,
+            "fields": "id,emailAddress,role"
+        }
+
+        if email_message and send_notification_email:
+            create_params["emailMessage"] = email_message
+
+        response = drive.permissions().create(**create_params).execute()
+
+        return (
+            f"Successfully shared document with {response.get('emailAddress')} "
+            f"as {response.get('role')}\n"
+            f"Permission ID: {response.get('id')}"
+        )
+
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error sharing document: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document not found. Check the document ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have permission to share this document."
+            )
+        if "400" in error_message:
+            raise ToolError(
+                f"Invalid request: {error_message}. Check the email address and role."
+            )
+        raise ToolError(f"Failed to share document: {error_message}")
+
+
+def list_permissions(document_id: str) -> str:
+    """
+    List all permissions on a document.
+
+    Args:
+        document_id: The ID of the document
+
+    Returns:
+        Formatted list of permissions
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    drive = get_drive_client()
+    log(f"Listing permissions for document {document_id}")
+
+    try:
+        response = drive.permissions().list(
+            fileId=document_id,
+            fields="permissions(id,emailAddress,role,type,displayName)"
+        ).execute()
+
+        permissions = response.get("permissions", [])
+
+        if not permissions:
+            return "No permissions found for this document."
+
+        lines = [f"Permissions for document {document_id}:", ""]
+        for perm in permissions:
+            perm_type = perm.get("type", "unknown")
+            role = perm.get("role", "unknown")
+            email = perm.get("emailAddress", perm.get("displayName", "N/A"))
+            perm_id = perm.get("id", "")
+
+            lines.append(f"- {email} ({perm_type}): {role} [ID: {perm_id}]")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error listing permissions: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document not found. Check the document ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have permission to view this document's permissions."
+            )
+        raise ToolError(f"Failed to list permissions: {error_message}")
+
+
+def remove_permission(
+    document_id: str,
+    permission_id: str,
+) -> str:
+    """
+    Remove a user's access to a document.
+
+    Args:
+        document_id: The ID of the document
+        permission_id: The ID of the permission to remove
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    drive = get_drive_client()
+    log(f"Removing permission {permission_id} from document {document_id}")
+
+    try:
+        drive.permissions().delete(
+            fileId=document_id,
+            permissionId=permission_id
+        ).execute()
+
+        return f"Successfully removed permission {permission_id} from document {document_id}."
+
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error removing permission: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document or permission not found. Check the document ID and permission ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have permission to manage sharing for this document."
+            )
+        raise ToolError(f"Failed to remove permission: {error_message}")
+
+
+def update_permission(
+    document_id: str,
+    permission_id: str,
+    new_role: str,
+) -> str:
+    """
+    Change a permission's role.
+
+    Args:
+        document_id: The ID of the document
+        permission_id: The ID of the permission to update
+        new_role: New permission role ("reader", "writer", "commenter")
+
+    Returns:
+        Success message
+
+    Raises:
+        ToolError: For permission/not found errors
+    """
+    drive = get_drive_client()
+    log(f"Updating permission {permission_id} to {new_role} for document {document_id}")
+
+    try:
+        response = drive.permissions().update(
+            fileId=document_id,
+            permissionId=permission_id,
+            body={"role": new_role},
+            fields="id,emailAddress,role"
+        ).execute()
+
+        return (
+            f"Successfully updated permission for {response.get('emailAddress', 'user')} "
+            f"to {response.get('role')}\n"
+            f"Permission ID: {response.get('id')}"
+        )
+
+    except Exception as e:
+        error_message = str(e)
+        log(f"Error updating permission: {error_message}")
+        if "404" in error_message:
+            raise ToolError("Document or permission not found. Check the document ID and permission ID.")
+        if "403" in error_message:
+            raise ToolError(
+                "Permission denied. Ensure you have permission to manage sharing for this document."
+            )
+        if "400" in error_message:
+            raise ToolError(
+                f"Invalid request: {error_message}. Check the role value."
+            )
+        raise ToolError(f"Failed to update permission: {error_message}")
